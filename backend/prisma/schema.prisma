@@ -1,0 +1,252 @@
+// Lucine Chatbot - Database Schema
+// Based on 02_DATABASE_SCHEMA.md
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum OperatorRole {
+  OPERATOR
+  ADMIN
+}
+
+enum ChatStatus {
+  ACTIVE
+  WAITING
+  WITH_OPERATOR
+  CLOSED
+  TICKET_CREATED
+}
+
+enum TicketStatus {
+  PENDING
+  ASSIGNED
+  OPEN
+  RESOLVED
+}
+
+enum TicketPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+enum ContactMethod {
+  WHATSAPP
+  EMAIL
+}
+
+enum KnowledgeCategory {
+  PARCHEGGIO
+  BIGLIETTI
+  ORARI
+  ACCESSO
+  SERVIZI
+  ALTRO
+}
+
+// ============================================
+// MODELS
+// ============================================
+
+model Operator {
+  id                      String   @id @default(uuid())
+  email                   String   @unique
+  passwordHash            String
+  name                    String
+  role                    OperatorRole @default(OPERATOR)
+
+  // Availability
+  isOnline                Boolean  @default(false)
+  lastSeenAt              DateTime @default(now())
+
+  // Notification settings
+  whatsappNumber          String?
+  notificationPreferences Json?    @default("{\"email\":{\"newChat\":true,\"newTicket\":true,\"ticketResumed\":true},\"whatsapp\":{\"newChat\":false,\"newTicket\":false,\"ticketResumed\":true},\"inApp\":{\"newChat\":true,\"newTicket\":true,\"chatMessage\":true,\"ticketResumed\":true},\"audio\":{\"newChat\":true,\"newTicket\":true,\"chatMessage\":false,\"ticketResumed\":true},\"quietHours\":{\"start\":\"22:00\",\"end\":\"08:00\"}}")
+
+  // Stats
+  totalChatsHandled       Int      @default(0)
+  totalTicketsHandled     Int      @default(0)
+  averageRating           Float?
+
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  // Relations
+  chatSessions            ChatSession[]
+  tickets                 Ticket[]
+  knowledgeItems          KnowledgeItem[]
+
+  @@index([email])
+  @@index([isOnline])
+}
+
+model ChatSession {
+  id                      String   @id @default(uuid())
+
+  // User info
+  userName                String?
+  userAgent               String?
+  ipAddress               String?  // Hashed for GDPR
+
+  // Session state
+  status                  ChatStatus @default(ACTIVE)
+  messages                Json     @default("[]")
+
+  // AI stats
+  aiConfidence            Float?   // Last AI response confidence (0-1)
+  aiTokensUsed            Int      @default(0)
+
+  // Operator assignment
+  operatorId              String?
+  operator                Operator? @relation(fields: [operatorId], references: [id])
+  operatorJoinedAt        DateTime?
+
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+  lastMessageAt           DateTime @default(now())
+  closedAt                DateTime?
+
+  // Relations
+  ticket                  Ticket?
+
+  @@index([status])
+  @@index([operatorId])
+  @@index([lastMessageAt])
+  @@index([createdAt])
+}
+
+model Ticket {
+  id                      String   @id @default(uuid())
+
+  // User contact (dual-channel: WhatsApp OR Email)
+  userName                String
+  contactMethod           ContactMethod
+  whatsappNumber          String?
+  email                   String?
+
+  // Ticket content
+  initialMessage          String
+
+  // Status & priority
+  status                  TicketStatus @default(PENDING)
+  priority                TicketPriority @default(NORMAL)
+
+  // Assignment
+  operatorId              String?
+  operator                Operator? @relation(fields: [operatorId], references: [id])
+  assignedAt              DateTime?
+
+  // Resolution
+  resolutionNotes         String?
+  resolvedAt              DateTime?
+
+  // Resume token (for WhatsApp/Email link)
+  resumeToken             String   @unique @default(uuid())
+  resumeTokenExpiresAt    DateTime // 30 days
+
+  // Linked chat session
+  sessionId               String   @unique
+  session                 ChatSession @relation(fields: [sessionId], references: [id])
+
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([status])
+  @@index([operatorId])
+  @@index([whatsappNumber])
+  @@index([email])
+  @@index([resumeToken])
+  @@index([createdAt])
+}
+
+model KnowledgeItem {
+  id                      String   @id @default(uuid())
+
+  // Content
+  question                String   @db.Text
+  answer                  String   @db.Text
+  category                KnowledgeCategory @default(ALTRO)
+
+  // Vector embedding for semantic search
+  embedding               Unsupported("vector(1536)")? // OpenAI ada-002 or text-embedding-3-small
+
+  // Status
+  isActive                Boolean  @default(true)
+
+  // Stats
+  timesUsed               Int      @default(0)
+  lastUsedAt              DateTime?
+
+  // Metadata
+  createdBy               String
+  creator                 Operator @relation(fields: [createdBy], references: [id])
+
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([category])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model Notification {
+  id                      String   @id @default(uuid())
+
+  // Recipient (optional - can be system-wide)
+  recipientId             String?
+
+  // Content
+  type                    String   // NEW_CHAT, NEW_TICKET, TICKET_RESUMED, etc.
+  title                   String
+  message                 String
+
+  // Metadata
+  metadata                Json?    // Additional data (sessionId, ticketId, etc.)
+
+  // Status
+  isRead                  Boolean  @default(false)
+  readAt                  DateTime?
+
+  // Channels sent
+  sentViaEmail            Boolean  @default(false)
+  sentViaWhatsApp         Boolean  @default(false)
+  sentViaInApp            Boolean  @default(true)
+
+  // Timestamps
+  createdAt               DateTime @default(now())
+
+  @@index([recipientId])
+  @@index([isRead])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  id                      String   @id @default(uuid())
+  key                     String   @unique
+  value                   Json
+  description             String?
+  category                String?
+
+  // Audit
+  updatedBy               String?  // operatorId
+  updatedAt               DateTime @updatedAt
+
+  @@index([key])
+  @@index([category])
+}
