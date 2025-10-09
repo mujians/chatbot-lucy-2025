@@ -1,7 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { io } from 'socket.io-client';
+import {
+  Home,
+  MessageSquare,
+  Ticket,
+  BookOpen,
+  Users,
+  Settings,
+  Bell,
+  LogOut,
+  Clock,
+  CheckCircle,
+  AlertCircle
+} from 'lucide-react';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
 import TicketList from '../components/TicketList';
@@ -32,16 +45,28 @@ const DashboardPage = () => {
   const [selectedChat, setSelectedChat] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [socket, setSocket] = useState(null);
+  const [stats, setStats] = useState({
+    waitingChats: 0,
+    myChats: 0,
+    pendingTickets: 0,
+    closedToday: 0,
+  });
 
   useEffect(() => {
-    // Load operator from localStorage
     const storedOperator = localStorage.getItem('operator');
     if (storedOperator) {
       setOperator(JSON.parse(storedOperator));
     }
   }, []);
 
-  // WebSocket setup for real-time notifications
+  useEffect(() => {
+    if (operator) {
+      fetchDashboardStats();
+      const interval = setInterval(fetchDashboardStats, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [operator]);
+
   useEffect(() => {
     if (!operator) return;
 
@@ -51,38 +76,33 @@ const DashboardPage = () => {
     });
 
     newSocket.on('connect', () => {
-      console.log('Dashboard WebSocket connected');
       newSocket.emit('operator_join', { operatorId: operator.id });
     });
 
-    // Listen for new chat requests
     newSocket.on('new_chat_request', (data) => {
       addNotification(
         `Nuova richiesta chat da ${data.userName || 'Utente'}`,
         'info'
       );
-      playNotificationSound();
+      fetchDashboardStats();
     });
 
-    // Listen for new tickets
     newSocket.on('new_ticket_created', (data) => {
       addNotification(
         `Nuovo ticket da ${data.userName} (${data.contactMethod})`,
         'warning'
       );
-      playNotificationSound();
+      fetchDashboardStats();
     });
 
-    // Listen for ticket resumed
     newSocket.on('ticket_resumed', (data) => {
       addNotification(`Ticket ripreso da ${data.userName}`, 'info');
     });
 
-    // Listen for chat assigned
     newSocket.on('chat_assigned', (data) => {
       if (data.operatorId === operator.id) {
         addNotification('Chat assegnata a te', 'success');
-        playNotificationSound();
+        fetchDashboardStats();
       }
     });
 
@@ -93,6 +113,39 @@ const DashboardPage = () => {
     };
   }, [operator]);
 
+  const fetchDashboardStats = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+
+      const [chatsRes, ticketsRes] = await Promise.all([
+        axios.get(`${API_URL}/chats`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        axios.get(`${API_URL}/tickets`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      const chats = chatsRes.data.data?.chats || [];
+      const tickets = ticketsRes.data.data?.tickets || [];
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      setStats({
+        waitingChats: chats.filter((c) => c.status === 'WAITING').length,
+        myChats: chats.filter((c) => c.operatorId === operator?.id && c.status === 'WITH_OPERATOR').length,
+        pendingTickets: tickets.filter((t) => t.status === 'PENDING').length,
+        closedToday: chats.filter((c) => {
+          const closedAt = new Date(c.closedAt);
+          return c.status === 'CLOSED' && closedAt >= today;
+        }).length,
+      });
+    } catch (error) {
+      console.error('Error fetching dashboard stats:', error);
+    }
+  };
+
   const addNotification = (message, type = 'info') => {
     const id = Date.now();
     setNotifications((prev) => [...prev, { id, message, type }]);
@@ -100,24 +153,6 @@ const DashboardPage = () => {
 
   const removeNotification = (id) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
-  };
-
-  const playNotificationSound = () => {
-    // Simple notification sound using Web Audio API
-    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    const oscillator = audioContext.createOscillator();
-    const gainNode = audioContext.createGain();
-
-    oscillator.connect(gainNode);
-    gainNode.connect(audioContext.destination);
-
-    oscillator.frequency.value = 800;
-    oscillator.type = 'sine';
-    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-
-    oscillator.start(audioContext.currentTime);
-    oscillator.stop(audioContext.currentTime + 0.5);
   };
 
   const handleLogout = () => {
@@ -129,10 +164,9 @@ const DashboardPage = () => {
   const toggleAvailability = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const newStatus = !isOnline;
 
       const response = await axios.post(
-        `${API_URL}/api/operators/me/toggle-availability`,
+        `${API_URL}/operators/me/toggle-availability`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -168,9 +202,11 @@ const DashboardPage = () => {
         return operator?.role === 'ADMIN' ? (
           <OperatorManager />
         ) : (
-          <div className="p-6 text-center text-gray-500">
-            <p className="text-3xl mb-2">🔒</p>
-            <p>Accesso riservato agli amministratori</p>
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-muted-foreground">
+              <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+              <p>Accesso riservato agli amministratori</p>
+            </div>
           </div>
         );
 
@@ -178,113 +214,112 @@ const DashboardPage = () => {
         return operator?.role === 'ADMIN' ? (
           <SettingsPanel />
         ) : (
-          <div className="p-6 text-center text-gray-500">
-            <p className="text-3xl mb-2">🔒</p>
-            <p>Accesso riservato agli amministratori</p>
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center text-muted-foreground">
+              <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+              <p>Accesso riservato agli amministratori</p>
+            </div>
           </div>
         );
 
       default:
-        // Dashboard Home
         return (
           <div className="p-6">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">Dashboard</h2>
-              <p className="text-gray-600">Benvenuto, {operator?.name}!</p>
+              <h2 className="text-2xl font-bold text-foreground">Dashboard</h2>
+              <p className="text-muted-foreground">Benvenuto, {operator?.name}</p>
             </div>
 
-            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">In Coda</p>
-                    <p className="text-3xl font-bold text-yellow-600">3</p>
+                    <p className="text-sm text-muted-foreground">In Coda</p>
+                    <p className="text-3xl font-bold text-warning">{stats.waitingChats}</p>
                   </div>
-                  <div className="text-4xl">⏳</div>
+                  <Clock className="h-10 w-10 text-warning" />
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Le Mie Chat</p>
-                    <p className="text-3xl font-bold text-christmas-green">5</p>
+                    <p className="text-sm text-muted-foreground">Le Mie Chat</p>
+                    <p className="text-3xl font-bold text-success">{stats.myChats}</p>
                   </div>
-                  <div className="text-4xl">💬</div>
+                  <MessageSquare className="h-10 w-10 text-success" />
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Ticket Pending</p>
-                    <p className="text-3xl font-bold text-red-600">7</p>
+                    <p className="text-sm text-muted-foreground">Ticket Pending</p>
+                    <p className="text-3xl font-bold text-destructive">{stats.pendingTickets}</p>
                   </div>
-                  <div className="text-4xl">🎫</div>
+                  <Ticket className="h-10 w-10 text-destructive" />
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Chiuse Oggi</p>
-                    <p className="text-3xl font-bold text-gray-600">12</p>
+                    <p className="text-sm text-muted-foreground">Chiuse Oggi</p>
+                    <p className="text-3xl font-bold text-muted-foreground">{stats.closedToday}</p>
                   </div>
-                  <div className="text-4xl">✅</div>
+                  <CheckCircle className="h-10 w-10 text-muted-foreground" />
                 </div>
               </div>
             </div>
 
-            {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
+              <div className="bg-card border border-border rounded-lg p-6">
                 <h3 className="text-lg font-semibold mb-4">Azioni Rapide</h3>
                 <div className="space-y-3">
                   <button
                     onClick={() => setActiveTab(TABS.CHATS)}
-                    className="w-full px-4 py-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors text-left font-medium"
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors text-left font-medium"
                   >
-                    💬 Gestisci Chat
+                    <MessageSquare className="h-5 w-5" />
+                    Gestisci Chat
                   </button>
                   <button
                     onClick={() => setActiveTab(TABS.TICKETS)}
-                    className="w-full px-4 py-3 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors text-left font-medium"
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-success/10 text-success rounded-lg hover:bg-success/20 transition-colors text-left font-medium"
                   >
-                    🎫 Gestisci Tickets
+                    <Ticket className="h-5 w-5" />
+                    Gestisci Tickets
                   </button>
                   <button
                     onClick={() => setActiveTab(TABS.KNOWLEDGE)}
-                    className="w-full px-4 py-3 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition-colors text-left font-medium"
+                    className="w-full flex items-center gap-3 px-4 py-3 bg-accent/10 text-accent rounded-lg hover:bg-accent/20 transition-colors text-left font-medium"
                   >
-                    📚 Gestisci Knowledge Base
+                    <BookOpen className="h-5 w-5" />
+                    Gestisci Knowledge Base
                   </button>
                 </div>
               </div>
 
-              <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-                <h3 className="text-lg font-semibold mb-4">Attività Recente</h3>
+              <div className="bg-card border border-border rounded-lg p-6">
+                <h3 className="text-lg font-semibold mb-4">Stato Sistema</h3>
                 <div className="space-y-3 text-sm">
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <span>💬</span>
-                    <div>
-                      <p>Chat assegnata da Mario Rossi</p>
-                      <p className="text-xs text-gray-400">5 minuti fa</p>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Chat in attesa</span>
+                    <span className="font-medium text-warning">{stats.waitingChats}</span>
                   </div>
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <span>🎫</span>
-                    <div>
-                      <p>Nuovo ticket creato</p>
-                      <p className="text-xs text-gray-400">12 minuti fa</p>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Le tue chat attive</span>
+                    <span className="font-medium text-success">{stats.myChats}</span>
                   </div>
-                  <div className="flex items-start gap-2 text-gray-600">
-                    <span>✅</span>
-                    <div>
-                      <p>Chat chiusa con successo</p>
-                      <p className="text-xs text-gray-400">25 minuti fa</p>
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Ticket da assegnare</span>
+                    <span className="font-medium text-destructive">{stats.pendingTickets}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Il tuo stato</span>
+                    <span className={`font-medium ${isOnline ? 'text-success' : 'text-muted-foreground'}`}>
+                      {isOnline ? 'ONLINE' : 'OFFLINE'}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -295,35 +330,34 @@ const DashboardPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Navbar */}
-      <nav className="bg-christmas-red text-white px-6 py-4 shadow-lg">
+    <div className="min-h-screen bg-background flex flex-col">
+      <nav className="bg-primary text-primary-foreground px-6 py-4 shadow-lg border-b border-border">
         <div className="flex justify-between items-center">
           <div className="flex items-center gap-6">
-            <h1 className="text-2xl font-bold">🎄 LUCINE</h1>
+            <h1 className="text-2xl font-bold">LUCINE CHATBOT</h1>
             <div className="flex gap-2">
               {[
-                { id: TABS.DASHBOARD, label: 'Dashboard', icon: '🏠' },
-                { id: TABS.CHATS, label: 'Chat', icon: '💬' },
-                { id: TABS.TICKETS, label: 'Tickets', icon: '🎫' },
-                { id: TABS.KNOWLEDGE, label: 'KB', icon: '📚' },
+                { id: TABS.DASHBOARD, label: 'Dashboard', icon: Home },
+                { id: TABS.CHATS, label: 'Chat', icon: MessageSquare },
+                { id: TABS.TICKETS, label: 'Tickets', icon: Ticket },
+                { id: TABS.KNOWLEDGE, label: 'KB', icon: BookOpen },
                 ...(operator?.role === 'ADMIN'
                   ? [
-                      { id: TABS.OPERATORS, label: 'Operatori', icon: '👥' },
-                      { id: TABS.SETTINGS, label: 'Impostazioni', icon: '⚙️' },
+                      { id: TABS.OPERATORS, label: 'Operatori', icon: Users },
+                      { id: TABS.SETTINGS, label: 'Impostazioni', icon: Settings },
                     ]
                   : []),
               ].map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 rounded transition-colors ${
+                  className={`flex items-center gap-2 px-4 py-2 rounded transition-colors ${
                     activeTab === tab.id
-                      ? 'bg-white/30'
-                      : 'hover:bg-white/20'
+                      ? 'bg-primary-foreground/20'
+                      : 'hover:bg-primary-foreground/10'
                   }`}
                 >
-                  <span className="mr-1">{tab.icon}</span>
+                  <tab.icon className="h-4 w-4" />
                   {tab.label}
                 </button>
               ))}
@@ -331,12 +365,11 @@ const DashboardPage = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Availability Toggle */}
-            <div className="flex items-center gap-2 bg-white/20 px-4 py-2 rounded-lg">
+            <div className="flex items-center gap-2 bg-primary-foreground/10 px-4 py-2 rounded-lg">
               <button
                 onClick={toggleAvailability}
                 className={`w-12 h-6 rounded-full transition-colors ${
-                  isOnline ? 'bg-christmas-green' : 'bg-gray-400'
+                  isOnline ? 'bg-success' : 'bg-muted'
                 } relative`}
               >
                 <span
@@ -346,28 +379,29 @@ const DashboardPage = () => {
                 />
               </button>
               <span className="text-sm font-medium">
-                {isOnline ? '🟢 ONLINE' : '⚪ OFFLINE'}
+                {isOnline ? 'ONLINE' : 'OFFLINE'}
               </span>
             </div>
 
-            {/* Notifications */}
-            <button className="relative hover:bg-white/20 p-2 rounded-full transition-colors">
-              🔔
-              <span className="absolute top-0 right-0 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                3
-              </span>
+            <button className="relative hover:bg-primary-foreground/10 p-2 rounded-full transition-colors">
+              <Bell className="h-5 w-5" />
+              {notifications.length > 0 && (
+                <span className="absolute top-0 right-0 bg-destructive text-destructive-foreground text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {notifications.length}
+                </span>
+              )}
             </button>
 
-            {/* User Menu */}
             <div className="flex items-center gap-2">
               <div className="text-right">
-                <p className="font-medium">{operator?.name || 'Operatore'}</p>
+                <p className="font-medium text-sm">{operator?.name || 'Operatore'}</p>
                 <p className="text-xs opacity-80">{operator?.role || 'OPERATOR'}</p>
               </div>
               <button
                 onClick={handleLogout}
-                className="bg-white/20 hover:bg-white/30 px-3 py-2 rounded transition-colors text-sm"
+                className="flex items-center gap-1 bg-primary-foreground/10 hover:bg-primary-foreground/20 px-3 py-2 rounded transition-colors text-sm"
               >
+                <LogOut className="h-4 w-4" />
                 Esci
               </button>
             </div>
@@ -375,12 +409,10 @@ const DashboardPage = () => {
         </div>
       </nav>
 
-      {/* Main Content */}
       <div className="flex-1 overflow-hidden">
         {renderTabContent()}
       </div>
 
-      {/* Toast Notifications */}
       {notifications.map((notification) => (
         <ToastNotification
           key={notification.id}
