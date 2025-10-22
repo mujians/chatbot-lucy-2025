@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
-if (!API_URL) throw new Error('VITE_API_URL required');
 
 const ChatList = ({ onSelectChat }) => {
   const [chats, setChats] = useState([]);
@@ -24,7 +22,6 @@ const ChatList = ({ onSelectChat }) => {
 
   const fetchChats = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
       const response = await axios.get(`/api/chat/sessions`, {
         headers: { Authorization: `Bearer ${token}` },
       });

@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
-if (!API_URL) throw new Error('VITE_API_URL required');
 
 const CATEGORIES = [
   { value: 'ORARI', label: 'Orari' },
@@ -38,7 +36,6 @@ const KnowledgeManager = () => {
 
   const fetchKnowledgeBase = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
       const response = await axios.get(`/api/knowledge`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -107,14 +104,12 @@ const KnowledgeManager = () => {
     e.preventDefault();
 
     try {
-      const token = localStorage.getItem('auth_token');
 
       if (editingItem) {
         // Update existing item
         await axios.put(
           `/api/knowledge/${editingItem.id}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          formData
         );
       } else {
         // Create new item
@@ -134,7 +129,6 @@ const KnowledgeManager = () => {
     if (!confirm('Sei sicuro di voler eliminare questo elemento?')) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.delete(`/api/knowledge/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -147,11 +141,9 @@ const KnowledgeManager = () => {
 
   const toggleActive = async (item) => {
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.put(
         `/api/knowledge/${item.id}`,
-        { ...item, isActive: !item.isActive },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { ...item, isActive: !item.isActive }
       );
 
       fetchKnowledgeBase();
@@ -201,11 +193,9 @@ const KnowledgeManager = () => {
         }
 
         // Send to backend
-        const token = localStorage.getItem('auth_token');
         const response = await axios.post(
           `/api/knowledge/bulk`,
-          { items },
-          { headers: { Authorization: `Bearer ${token}` } }
+          { items }
         );
 
         alert(`Importate ${response.data.data.imported} domande su ${response.data.data.total}`);

@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
 
 const CannedResponsesManager = () => {
   const [responses, setResponses] = useState([]);
@@ -22,7 +21,6 @@ const CannedResponsesManager = () => {
   const loadResponses = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('auth_token');
       const response = await axios.get(`/api/canned-responses`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -59,14 +57,12 @@ const CannedResponsesManager = () => {
 
   const handleSave = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
 
       if (editingId) {
         // Update existing
         await axios.put(
           `/api/canned-responses/${editingId}`,
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          formData
         );
       } else {
         // Create new
@@ -90,7 +86,6 @@ const CannedResponsesManager = () => {
     if (!confirm('Sei sicuro di voler eliminare questa risposta?')) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.delete(`/api/canned-responses/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });

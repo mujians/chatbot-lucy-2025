@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
-if (!API_URL) throw new Error('VITE_API_URL required');
-
 const SettingsPanel = () => {
   const [settings, setSettings] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,15 +13,11 @@ const SettingsPanel = () => {
 
   const fetchSettings = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await axios.get(`/api/settings`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
+      const response = await axios.get('/api/settings');
       setSettings(response.data.data?.settings || []);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching settings:', error);
+      console.error('Failed to fetch settings:', error);
       setLoading(false);
     }
   };
@@ -33,13 +26,7 @@ const SettingsPanel = () => {
     setSaving(true);
 
     try {
-      const token = localStorage.getItem('auth_token');
-      await axios.put(
-        `/api/settings/${setting.key}`,
-        { value: setting.value },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
+      await axios.put(`/api/settings/${setting.key}`, { value: setting.value });
       setEditingKey(null);
       fetchSettings();
     } catch (error) {

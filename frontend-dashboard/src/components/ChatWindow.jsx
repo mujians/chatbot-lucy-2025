@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from '../lib/axios';
 import { io } from 'socket.io-client';
 
-const API_URL = import.meta.env.VITE_API_URL;
 const WS_URL = import.meta.env.VITE_WS_URL;
-if (!API_URL) throw new Error('VITE_API_URL required');
 if (!WS_URL) throw new Error('VITE_WS_URL required');
 
 const ChatWindow = ({ chat, onClose }) => {
@@ -69,11 +67,9 @@ const ChatWindow = ({ chat, onClose }) => {
     setLoading(true);
 
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.post(
         `/api/chat/session/${chat.id}/message`,
-        { message, sender: 'operator' },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { message, sender: 'operator' }
       );
     } catch (error) {
       console.error('Error sending message:', error);
@@ -86,11 +82,9 @@ const ChatWindow = ({ chat, onClose }) => {
     if (!confirm('Sei sicuro di voler chiudere questa chat?')) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.post(
         `/api/chat/session/${chat.id}/close`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+        {}
       );
       onClose?.();
     } catch (error) {
@@ -100,11 +94,9 @@ const ChatWindow = ({ chat, onClose }) => {
 
   const handleConvertToTicket = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.post(
         `/api/chat/session/${chat.id}/convert-to-ticket`,
-        convertFormData,
-        { headers: { Authorization: `Bearer ${token}` } }
+        convertFormData
       );
 
       alert('Chat convertita in ticket con successo!');
@@ -118,7 +110,6 @@ const ChatWindow = ({ chat, onClose }) => {
 
   const handleOpenTransferModal = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
       const response = await axios.get(`/api/operators`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -144,11 +135,9 @@ const ChatWindow = ({ chat, onClose }) => {
     }
 
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.post(
         `/api/chat/sessions/${chat.id}/transfer`,
-        transferData,
-        { headers: { Authorization: `Bearer ${token}` } }
+        transferData
       );
 
       alert('Chat trasferita con successo!');

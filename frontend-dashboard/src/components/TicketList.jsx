@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { Search, Filter, Plus, Clock, User, AlertCircle, Mail, MessageSquare } from 'lucide-react';
 import axios from '../lib/axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
 
 const statusColors = {
   PENDING: 'bg-warning/10 text-warning border-warning/20',
@@ -31,8 +30,7 @@ const TicketList = () => {
 
   const fetchTickets = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await axios.get(`${API_URL}/tickets`, {
+      const response = await axios.get(`/api/tickets`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setTickets(response.data.data?.tickets || []);
@@ -45,8 +43,7 @@ const TicketList = () => {
 
   const handleAssignTicket = async (ticketId) => {
     try {
-      const token = localStorage.getItem('auth_token');
-      await axios.post(`${API_URL}/tickets/${ticketId}/assign`, {}, {
+      await axios.post(`/api/tickets/${ticketId}/assign`, {}, {
         headers: { Authorization: `Bearer ${token}` },
       });
       fetchTickets();
@@ -58,8 +55,7 @@ const TicketList = () => {
 
   const handleResolveTicket = async (ticketId) => {
     try {
-      const token = localStorage.getItem('auth_token');
-      await axios.post(`${API_URL}/tickets/${ticketId}/resolve`, {
+      await axios.post(`/api/tickets/${ticketId}/resolve`, {
         resolutionNotes: '',
       }, {
         headers: { Authorization: `Bearer ${token}` },
@@ -73,8 +69,7 @@ const TicketList = () => {
 
   const handleCloseTicket = async (ticketId) => {
     try {
-      const token = localStorage.getItem('auth_token');
-      await axios.patch(`${API_URL}/tickets/${ticketId}`, {
+      await axios.patch(`/api/tickets/${ticketId}`, {
         status: 'CLOSED',
       }, {
         headers: { Authorization: `Bearer ${token}` },

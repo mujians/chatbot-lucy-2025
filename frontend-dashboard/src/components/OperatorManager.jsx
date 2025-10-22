@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from '../lib/axios';
 
-const API_URL = import.meta.env.VITE_API_URL;
-if (!API_URL) throw new Error('VITE_API_URL required');
 
 const OperatorManager = () => {
   const [operators, setOperators] = useState([]);
@@ -23,7 +21,6 @@ const OperatorManager = () => {
 
   const fetchOperators = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
       const response = await axios.get(`/api/operators`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -75,7 +72,6 @@ const OperatorManager = () => {
     e.preventDefault();
 
     try {
-      const token = localStorage.getItem('auth_token');
       const submitData = { ...formData };
 
       // Remove password if empty (for updates)
@@ -86,8 +82,7 @@ const OperatorManager = () => {
       if (editingOperator) {
         await axios.put(
           `/api/operators/${editingOperator.id}`,
-          submitData,
-          { headers: { Authorization: `Bearer ${token}` } }
+          submitData
         );
       } else {
         await axios.post(`/api/operators`, submitData, {
@@ -107,7 +102,6 @@ const OperatorManager = () => {
     if (!confirm('Sei sicuro di voler eliminare questo operatore?')) return;
 
     try {
-      const token = localStorage.getItem('auth_token');
       await axios.delete(`/api/operators/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
