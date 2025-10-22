@@ -18,12 +18,14 @@ import {
   Flag,
   Activity,
   Timer,
-  TrendingUp
+  TrendingUp,
+  MessageCircle
 } from 'lucide-react';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
 import TicketList from '../components/TicketList';
 import KnowledgeManager from '../components/KnowledgeManager';
+import CannedResponsesManager from '../components/CannedResponsesManager';
 import OperatorManager from '../components/OperatorManager';
 import SettingsPanel from '../components/SettingsPanel';
 import ToastNotification from '../components/ToastNotification';
@@ -38,6 +40,7 @@ const TABS = {
   CHATS: 'chats',
   TICKETS: 'tickets',
   KNOWLEDGE: 'knowledge',
+  CANNED_RESPONSES: 'canned-responses',
   OPERATORS: 'operators',
   SETTINGS: 'settings',
 };
@@ -209,6 +212,9 @@ const DashboardPage = () => {
 
       case TABS.KNOWLEDGE:
         return <KnowledgeManager />;
+
+      case TABS.CANNED_RESPONSES:
+        return <CannedResponsesManager />;
 
       case TABS.OPERATORS:
         return operator?.role === 'ADMIN' ? (
@@ -514,6 +520,7 @@ const DashboardPage = () => {
                 { id: TABS.CHATS, label: 'Chat', icon: MessageSquare },
                 { id: TABS.TICKETS, label: 'Tickets', icon: Ticket },
                 { id: TABS.KNOWLEDGE, label: 'KB', icon: BookOpen },
+                { id: TABS.CANNED_RESPONSES, label: 'Risposte', icon: MessageCircle },
                 ...(operator?.role === 'ADMIN'
                   ? [
                       { id: TABS.OPERATORS, label: 'Operatori', icon: Users },

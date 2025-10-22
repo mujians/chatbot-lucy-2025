@@ -58,6 +58,7 @@ import knowledgeRoutes from './routes/knowledge.routes.js';
 import operatorRoutes from './routes/operator.routes.js';
 import settingsRoutes from './routes/settings.routes.js';
 import analyticsRoutes from './routes/analytics.routes.js';
+import cannedResponseRoutes from './routes/canned-response.routes.js';
 import { setupWebSocketHandlers } from './services/websocket.service.js';
 
 // Use routes
@@ -68,6 +69,7 @@ app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/operators', operatorRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/canned-responses', cannedResponseRoutes);
 
 // Setup WebSocket handlers
 setupWebSocketHandlers(io);

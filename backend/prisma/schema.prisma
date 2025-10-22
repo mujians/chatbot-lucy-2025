@@ -89,6 +89,7 @@ model Operator {
   chatSessions            ChatSession[]
   tickets                 Ticket[]
   knowledgeItems          KnowledgeItem[]
+  cannedResponses         CannedResponse[]
 
   @@index([email])
   @@index([isOnline])
@@ -218,6 +219,36 @@ model KnowledgeItem {
   @@index([category])
   @@index([isActive])
   @@index([createdAt])
+}
+
+model CannedResponse {
+  id                      String   @id @default(uuid())
+
+  // Content
+  title                   String   // Short name for the response
+  content                 String   @db.Text // The message template
+  shortcut                String?  // Optional keyboard shortcut (e.g., "/greeting", "/hours")
+
+  // Scope
+  isGlobal                Boolean  @default(false) // If true, available to all operators
+  createdBy               String
+  creator                 Operator @relation(fields: [createdBy], references: [id])
+
+  // Stats
+  timesUsed               Int      @default(0)
+  lastUsedAt              DateTime?
+
+  // Status
+  isActive                Boolean  @default(true)
+
+  // Timestamps
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([createdBy])
+  @@index([isGlobal])
+  @@index([isActive])
+  @@index([shortcut])
 }
 
 model Notification {
