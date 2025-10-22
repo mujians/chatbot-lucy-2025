@@ -89,13 +89,16 @@ export function setupWebSocketHandlers(io) {
      */
     socket.on('request_operator', async ({ sessionId }) => {
       try {
-        // Check for online operators
-        const onlineOperators = await prisma.operator.findMany({
-          where: { isOnline: true },
+        // Check for online AND available operators
+        const availableOperators = await prisma.operator.findMany({
+          where: {
+            isOnline: true,
+            isAvailable: true,
+          },
           orderBy: { totalChatsHandled: 'asc' },
         });
 
-        if (onlineOperators.length === 0) {
+        if (availableOperators.length === 0) {
           socket.emit('no_operators_available', {
             message: 'Nessun operatore disponibile. Vuoi aprire un ticket?',
           });
@@ -103,7 +106,7 @@ export function setupWebSocketHandlers(io) {
         }
 
         // Assign to least busy operator
-        const operator = onlineOperators[0];
+        const operator = availableOperators[0];
 
         await prisma.chatSession.update({
           where: { id: sessionId },
@@ -142,10 +145,16 @@ export function setupWebSocketHandlers(io) {
         socket.join('dashboard');
         console.log(`👨‍💼 Operator ${operatorId} joined dashboard`);
 
-        // Update last seen
+        // Store operatorId in socket for disconnect handler
+        socket.data.operatorId = operatorId;
+
+        // Update last seen and set online
         await prisma.operator.update({
           where: { id: operatorId },
-          data: { lastSeenAt: new Date() },
+          data: {
+            isOnline: true,
+            lastSeenAt: new Date(),
+          },
         });
 
         socket.emit('dashboard_joined', { operatorId });
@@ -284,8 +293,33 @@ export function setupWebSocketHandlers(io) {
     // DISCONNECT
     // ============================================
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`❌ Client disconnected: ${socket.id}`);
+
+      // If operator disconnects, set offline and unavailable
+      const operatorId = socket.data.operatorId;
+      if (operatorId) {
+        try {
+          await prisma.operator.update({
+            where: { id: operatorId },
+            data: {
+              isOnline: false,
+              isAvailable: false,
+              lastSeenAt: new Date(),
+            },
+          });
+          console.log(`👨‍💼 Operator ${operatorId} set offline on disconnect`);
+
+          // Notify other operators in dashboard
+          io.to('dashboard').emit('operator_status_changed', {
+            operatorId,
+            isOnline: false,
+            isAvailable: false,
+          });
+        } catch (error) {
+          console.error('Error updating operator status on disconnect:', error);
+        }
+      }
     });
   });
 

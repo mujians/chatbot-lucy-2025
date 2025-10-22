@@ -28,6 +28,7 @@ export const login = async (req, res) => {
         role: true,
         passwordHash: true,
         isOnline: true,
+        isAvailable: true,
       },
     });
 
@@ -56,10 +57,13 @@ export const login = async (req, res) => {
       { expiresIn: config.jwtExpiresIn }
     );
 
-    // Update last seen
+    // Update last seen and set online
     await prisma.operator.update({
       where: { id: operator.id },
-      data: { lastSeenAt: new Date() },
+      data: {
+        isOnline: true,
+        lastSeenAt: new Date(),
+      },
     });
 
     // Remove password from response
@@ -94,11 +98,15 @@ export const getCurrentOperator = async (req, res) => {
         name: true,
         role: true,
         isOnline: true,
+        isAvailable: true,
         whatsappNumber: true,
         notificationPreferences: true,
         totalChatsHandled: true,
         totalTicketsHandled: true,
+        averageRating: true,
+        lastSeenAt: true,
         createdAt: true,
+        updatedAt: true,
       },
     });
 
@@ -126,11 +134,12 @@ export const getCurrentOperator = async (req, res) => {
  */
 export const logout = async (req, res) => {
   try {
-    // Set operator offline
+    // Set operator offline and unavailable
     await prisma.operator.update({
       where: { id: req.operator.id },
       data: {
         isOnline: false,
+        isAvailable: false,
         lastSeenAt: new Date(),
       },
     });
@@ -162,6 +171,7 @@ export const refreshToken = async (req, res) => {
         name: true,
         role: true,
         isOnline: true,
+        isAvailable: true,
       },
     });
 
