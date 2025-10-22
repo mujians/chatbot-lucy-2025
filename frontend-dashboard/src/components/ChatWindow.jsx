@@ -19,6 +19,12 @@ const ChatWindow = ({ chat, onClose }) => {
     email: '',
     operatorNotes: '',
   });
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [availableOperators, setAvailableOperators] = useState([]);
+  const [transferData, setTransferData] = useState({
+    toOperatorId: '',
+    reason: '',
+  });
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -107,6 +113,51 @@ const ChatWindow = ({ chat, onClose }) => {
     } catch (error) {
       console.error('Error converting to ticket:', error);
       alert('Errore durante la conversione in ticket');
+    }
+  };
+
+  const handleOpenTransferModal = async () => {
+    try {
+      const token = localStorage.getItem('auth_token');
+      const response = await axios.get(`${API_URL}/api/operators`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      // Filter out current operator and offline operators
+      const currentOperatorId = chat.operatorId;
+      const available = response.data.data?.operators?.filter(
+        (op) => op.id !== currentOperatorId && op.isOnline && op.isAvailable
+      ) || [];
+
+      setAvailableOperators(available);
+      setShowTransferModal(true);
+    } catch (error) {
+      console.error('Error loading operators:', error);
+      alert('Errore durante il caricamento degli operatori');
+    }
+  };
+
+  const handleTransferChat = async () => {
+    if (!transferData.toOperatorId) {
+      alert('Seleziona un operatore');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('auth_token');
+      await axios.post(
+        `${API_URL}/api/chat/sessions/${chat.id}/transfer`,
+        transferData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      alert('Chat trasferita con successo!');
+      setShowTransferModal(false);
+      setTransferData({ toOperatorId: '', reason: '' });
+      onClose?.();
+    } catch (error) {
+      console.error('Error transferring chat:', error);
+      alert(error.response?.data?.error?.message || 'Errore durante il trasferimento');
     }
   };
 
@@ -228,16 +279,22 @@ const ChatWindow = ({ chat, onClose }) => {
       <div className="px-6 py-3 border-t border-gray-200 bg-white">
         <div className="flex gap-2 justify-end max-w-4xl mx-auto">
           <button
-            onClick={handleCloseChat}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            onClick={handleOpenTransferModal}
+            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-300 rounded-lg hover:bg-blue-100 transition-colors"
           >
-            ✕ Chiudi Chat
+            🔄 Trasferisci Chat
           </button>
           <button
             onClick={() => setShowConvertModal(true)}
             className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             🎫 Converti in Ticket
+          </button>
+          <button
+            onClick={handleCloseChat}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            ✕ Chiudi Chat
           </button>
         </div>
       </div>
@@ -374,6 +431,98 @@ const ChatWindow = ({ chat, onClose }) => {
                 Converti in Ticket
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Transfer Chat Modal */}
+      {showTransferModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Trasferisci Chat
+            </h3>
+
+            {availableOperators.length === 0 ? (
+              <div className="py-8 text-center">
+                <p className="text-gray-500 mb-4">
+                  Nessun operatore disponibile per il trasferimento
+                </p>
+                <button
+                  onClick={() => setShowTransferModal(false)}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  Chiudi
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {/* Operator Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Seleziona Operatore
+                    </label>
+                    <select
+                      value={transferData.toOperatorId}
+                      onChange={(e) =>
+                        setTransferData({
+                          ...transferData,
+                          toOperatorId: e.target.value,
+                        })
+                      }
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      required
+                    >
+                      <option value="">-- Seleziona un operatore --</option>
+                      {availableOperators.map((op) => (
+                        <option key={op.id} value={op.id}>
+                          {op.name} ({op.email})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Transfer Reason */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Motivo del Trasferimento (opzionale)
+                    </label>
+                    <textarea
+                      value={transferData.reason}
+                      onChange={(e) =>
+                        setTransferData({
+                          ...transferData,
+                          reason: e.target.value,
+                        })
+                      }
+                      rows={3}
+                      placeholder="Es: Cliente richiede supporto tecnico avanzato"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Modal Actions */}
+                <div className="flex gap-2 mt-6">
+                  <button
+                    onClick={() => {
+                      setShowTransferModal(false);
+                      setTransferData({ toOperatorId: '', reason: '' });
+                    }}
+                    className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Annulla
+                  </button>
+                  <button
+                    onClick={handleTransferChat}
+                    className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-500 rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    Trasferisci
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
