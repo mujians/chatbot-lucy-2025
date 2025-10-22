@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from '../lib/axios';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -23,7 +23,7 @@ const CannedResponsesManager = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('auth_token');
-      const response = await axios.get(`${API_URL}/api/canned-responses`, {
+      const response = await axios.get(`/api/canned-responses`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setResponses(response.data.data || []);
@@ -64,13 +64,13 @@ const CannedResponsesManager = () => {
       if (editingId) {
         // Update existing
         await axios.put(
-          `${API_URL}/api/canned-responses/${editingId}`,
+          `/api/canned-responses/${editingId}`,
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else {
         // Create new
-        await axios.post(`${API_URL}/api/canned-responses`, formData, {
+        await axios.post(`/api/canned-responses`, formData, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
@@ -91,7 +91,7 @@ const CannedResponsesManager = () => {
 
     try {
       const token = localStorage.getItem('auth_token');
-      await axios.delete(`${API_URL}/api/canned-responses/${id}`, {
+      await axios.delete(`/api/canned-responses/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       loadResponses();

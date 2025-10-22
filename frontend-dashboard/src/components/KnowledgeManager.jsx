@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from '../lib/axios';
 
 const API_URL = import.meta.env.VITE_API_URL;
 if (!API_URL) throw new Error('VITE_API_URL required');
@@ -39,7 +39,7 @@ const KnowledgeManager = () => {
   const fetchKnowledgeBase = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await axios.get(`${API_URL}/api/knowledge`, {
+      const response = await axios.get(`/api/knowledge`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -112,13 +112,13 @@ const KnowledgeManager = () => {
       if (editingItem) {
         // Update existing item
         await axios.put(
-          `${API_URL}/api/knowledge/${editingItem.id}`,
+          `/api/knowledge/${editingItem.id}`,
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
       } else {
         // Create new item
-        await axios.post(`${API_URL}/api/knowledge`, formData, {
+        await axios.post(`/api/knowledge`, formData, {
           headers: { Authorization: `Bearer ${token}` },
         });
       }
@@ -135,7 +135,7 @@ const KnowledgeManager = () => {
 
     try {
       const token = localStorage.getItem('auth_token');
-      await axios.delete(`${API_URL}/api/knowledge/${id}`, {
+      await axios.delete(`/api/knowledge/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -149,7 +149,7 @@ const KnowledgeManager = () => {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.put(
-        `${API_URL}/api/knowledge/${item.id}`,
+        `/api/knowledge/${item.id}`,
         { ...item, isActive: !item.isActive },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -203,7 +203,7 @@ const KnowledgeManager = () => {
         // Send to backend
         const token = localStorage.getItem('auth_token');
         const response = await axios.post(
-          `${API_URL}/api/knowledge/bulk`,
+          `/api/knowledge/bulk`,
           { items },
           { headers: { Authorization: `Bearer ${token}` } }
         );

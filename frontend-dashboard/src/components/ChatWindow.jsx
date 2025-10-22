@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import axios from '../lib/axios';
 import { io } from 'socket.io-client';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -71,7 +71,7 @@ const ChatWindow = ({ chat, onClose }) => {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.post(
-        `${API_URL}/api/chat/session/${chat.id}/message`,
+        `/api/chat/session/${chat.id}/message`,
         { message, sender: 'operator' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -88,7 +88,7 @@ const ChatWindow = ({ chat, onClose }) => {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.post(
-        `${API_URL}/api/chat/session/${chat.id}/close`,
+        `/api/chat/session/${chat.id}/close`,
         {},
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -102,7 +102,7 @@ const ChatWindow = ({ chat, onClose }) => {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.post(
-        `${API_URL}/api/chat/session/${chat.id}/convert-to-ticket`,
+        `/api/chat/session/${chat.id}/convert-to-ticket`,
         convertFormData,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -119,7 +119,7 @@ const ChatWindow = ({ chat, onClose }) => {
   const handleOpenTransferModal = async () => {
     try {
       const token = localStorage.getItem('auth_token');
-      const response = await axios.get(`${API_URL}/api/operators`, {
+      const response = await axios.get(`/api/operators`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -146,7 +146,7 @@ const ChatWindow = ({ chat, onClose }) => {
     try {
       const token = localStorage.getItem('auth_token');
       await axios.post(
-        `${API_URL}/api/chat/sessions/${chat.id}/transfer`,
+        `/api/chat/sessions/${chat.id}/transfer`,
         transferData,
         { headers: { Authorization: `Bearer ${token}` } }
       );

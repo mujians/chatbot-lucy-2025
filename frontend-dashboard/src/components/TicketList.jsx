@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Search, Filter, Plus, Clock, User, AlertCircle, Mail, MessageSquare } from 'lucide-react';
-import axios from 'axios';
+import axios from '../lib/axios';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
