@@ -7,6 +7,8 @@ const ChatWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState('');
   const [showTicketForm, setShowTicketForm] = useState(false);
+  const [showOperatorButtons, setShowOperatorButtons] = useState(false);
+  const [showTicketButtons, setShowTicketButtons] = useState(false);
   const [shouldShowWidget, setShouldShowWidget] = useState(false);
   const messagesEndRef = useRef(null);
 
@@ -31,6 +33,7 @@ const ChatWidget = () => {
     operatorName,
     loading,
     error,
+    lastAISuggestOperator,
     initializeSession,
     sendMessage,
     requestOperator,
@@ -47,9 +50,18 @@ const ChatWidget = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Show operator buttons when AI suggests it
+  useEffect(() => {
+    if (lastAISuggestOperator && !showTicketButtons) {
+      setShowOperatorButtons(true);
+    }
+  }, [lastAISuggestOperator, showTicketButtons]);
+
   const toggleChat = () => {
     setIsOpen(!isOpen);
     setShowTicketForm(false);
+    setShowOperatorButtons(false);
+    setShowTicketButtons(false);
   };
 
   const handleSendMessage = async (e) => {
@@ -64,11 +76,22 @@ const ChatWidget = () => {
   };
 
   const handleRequestOperator = async () => {
+    setShowOperatorButtons(false);
     const result = await requestOperator();
 
     if (result?.noOperators) {
-      setShowTicketForm(true);
+      // Show ticket yes/no buttons instead of immediately showing form
+      setShowTicketButtons(true);
     }
+  };
+
+  const handleConfirmTicket = () => {
+    setShowTicketButtons(false);
+    setShowTicketForm(true);
+  };
+
+  const handleCancelTicket = () => {
+    setShowTicketButtons(false);
   };
 
   const handleTicketSubmit = async (ticketData) => {
@@ -190,8 +213,8 @@ const ChatWidget = () => {
                   />
                 ))}
 
-                {/* Smart Actions */}
-                {shouldShowAIActions() && (
+                {/* Smart Actions - Request Operator */}
+                {shouldShowAIActions() && !showTicketButtons && (
                   <div className="my-4 space-y-2 animate-slideUp">
                     <button
                       onClick={handleRequestOperator}
@@ -202,11 +225,37 @@ const ChatWidget = () => {
                     </button>
                     <button
                       onClick={() => {
-                        /* Continue with AI */
+                        /* Continue with AI - do nothing, just hide buttons */
                       }}
                       className="w-full bg-gray-100 text-gray-700 px-4 py-3 rounded-lg font-semibold hover:bg-gray-200 transition-all"
                     >
                       🤖 CONTINUA CON AI
+                    </button>
+                  </div>
+                )}
+
+                {/* Ticket Confirmation Buttons */}
+                {showTicketButtons && (
+                  <div className="my-4 space-y-2 animate-slideUp">
+                    <div className="bg-yellow-50 border-2 border-yellow-400 rounded-lg p-4 mb-3">
+                      <p className="text-gray-800 font-semibold text-center mb-2">
+                        ⚠️ Nessun operatore disponibile
+                      </p>
+                      <p className="text-gray-700 text-sm text-center">
+                        Vuoi aprire un ticket? Ti ricontatteremo al più presto!
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleConfirmTicket}
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-3 rounded-lg font-semibold hover:from-blue-600 hover:to-blue-700 transition-all shadow-md"
+                    >
+                      ✅ SÌ, APRI TICKET
+                    </button>
+                    <button
+                      onClick={handleCancelTicket}
+                      className="w-full bg-gray-100 text-gray-700 px-4 py-3 rounded-lg font-semibold hover:bg-gray-200 transition-all"
+                    >
+                      ❌ NO, CONTINUA CON AI
                     </button>
                   </div>
                 )}

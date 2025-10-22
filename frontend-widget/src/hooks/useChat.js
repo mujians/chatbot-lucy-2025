@@ -12,6 +12,7 @@ export function useChat() {
   const [operatorName, setOperatorName] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [lastAISuggestOperator, setLastAISuggestOperator] = useState(false);
 
   /**
    * Initialize chat session
@@ -117,6 +118,13 @@ export function useChat() {
         // If there's an AI response, add it
         if (result.aiResponse) {
           setMessages((prev) => [...prev, result.aiResponse]);
+
+          // Track if AI suggests operator
+          if (result.suggestOperator) {
+            setLastAISuggestOperator(true);
+          } else {
+            setLastAISuggestOperator(false);
+          }
         }
       } catch (err) {
         console.error('Send message error:', err);
@@ -247,6 +255,7 @@ export function useChat() {
     operatorName,
     loading,
     error,
+    lastAISuggestOperator,
     initializeSession,
     sendMessage,
     requestOperator,
