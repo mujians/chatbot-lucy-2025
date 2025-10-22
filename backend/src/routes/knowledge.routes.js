@@ -7,6 +7,7 @@ import {
   deleteKnowledgeItem,
   toggleKnowledgeItem,
   bulkImportKnowledge,
+  regenerateAllEmbeddings,
 } from '../controllers/knowledge.controller.js';
 import { authenticateToken, requireAdmin } from '../middleware/auth.middleware.js';
 
@@ -25,5 +26,6 @@ router.put('/:itemId', requireAdmin, updateKnowledgeItem);
 router.delete('/:itemId', requireAdmin, deleteKnowledgeItem);
 router.patch('/:itemId/toggle', requireAdmin, toggleKnowledgeItem);
 router.post('/bulk', requireAdmin, bulkImportKnowledge);
+router.post('/regenerate-embeddings', requireAdmin, regenerateAllEmbeddings);
 
 export default router;

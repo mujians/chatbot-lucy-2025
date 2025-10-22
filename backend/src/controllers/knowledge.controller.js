@@ -302,3 +302,68 @@ export const bulkImportKnowledge = async (req, res) => {
     });
   }
 };
+
+/**
+ * Regenerate embeddings for all knowledge items
+ * POST /api/knowledge/regenerate-embeddings
+ */
+export const regenerateAllEmbeddings = async (req, res) => {
+  try {
+    // Get all knowledge items
+    const items = await prisma.knowledgeItem.findMany({
+      select: {
+        id: true,
+        question: true,
+        answer: true,
+      },
+    });
+
+    if (items.length === 0) {
+      return res.json({
+        success: true,
+        data: {
+          processed: 0,
+          total: 0,
+          message: 'No knowledge items found',
+        },
+      });
+    }
+
+    // Process embeddings asynchronously
+    let processed = 0;
+    const errors = [];
+
+    for (const item of items) {
+      try {
+        const text = `${item.question}\n${item.answer}`;
+        const embedding = await generateEmbedding(text);
+
+        await prisma.knowledgeItem.update({
+          where: { id: item.id },
+          data: { embedding },
+        });
+
+        processed++;
+      } catch (error) {
+        console.error(`Failed to generate embedding for item ${item.id}:`, error);
+        errors.push({ id: item.id, question: item.question });
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        processed,
+        total: items.length,
+        errors: errors.length,
+        failedItems: errors,
+        message: `Successfully regenerated ${processed} of ${items.length} embeddings`,
+      },
+    });
+  } catch (error) {
+    console.error('Regenerate embeddings error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
