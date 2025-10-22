@@ -13,7 +13,12 @@ import {
   LogOut,
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Archive,
+  Flag,
+  Activity,
+  Timer,
+  TrendingUp
 } from 'lucide-react';
 import ChatList from '../components/ChatList';
 import ChatWindow from '../components/ChatWindow';
@@ -51,6 +56,7 @@ const DashboardPage = () => {
     pendingTickets: 0,
     closedToday: 0,
   });
+  const [dashboardAnalytics, setDashboardAnalytics] = useState(null);
 
   useEffect(() => {
     const storedOperator = localStorage.getItem('operator');
@@ -117,17 +123,21 @@ const DashboardPage = () => {
     try {
       const token = localStorage.getItem('auth_token');
 
-      const [chatsRes, ticketsRes] = await Promise.all([
+      const [chatsRes, ticketsRes, analyticsRes] = await Promise.all([
         axios.get(`${API_URL}/chats`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         axios.get(`${API_URL}/tickets`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
+        axios.get(`${API_URL}/analytics/dashboard`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
       ]);
 
       const chats = chatsRes.data.data?.chats || [];
       const tickets = ticketsRes.data.data?.tickets || [];
+      const analytics = analyticsRes.data.data || null;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -141,6 +151,8 @@ const DashboardPage = () => {
           return c.status === 'CLOSED' && closedAt >= today;
         }).length,
       });
+
+      setDashboardAnalytics(analytics);
     } catch (error) {
       console.error('Error fetching dashboard stats:', error);
     }
@@ -224,12 +236,13 @@ const DashboardPage = () => {
 
       default:
         return (
-          <div className="p-6">
+          <div className="p-6 overflow-auto">
             <div className="mb-6">
               <h2 className="text-2xl font-bold text-foreground">Dashboard</h2>
               <p className="text-muted-foreground">Benvenuto, {operator?.name}</p>
             </div>
 
+            {/* Quick Stats Row */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
               <div className="bg-card border border-border rounded-lg p-6">
                 <div className="flex items-center justify-between">
@@ -272,6 +285,166 @@ const DashboardPage = () => {
               </div>
             </div>
 
+            {/* Analytics Section */}
+            {dashboardAnalytics && (
+              <>
+                {/* Chat Analytics */}
+                <div className="mb-6">
+                  <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5" />
+                    Statistiche Chat
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Totali</p>
+                      <p className="text-2xl font-bold">{dashboardAnalytics.chats.total}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Attive</p>
+                      <p className="text-2xl font-bold text-green-500">{dashboardAnalytics.chats.active}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1">In Coda</p>
+                      <p className="text-2xl font-bold text-yellow-500">{dashboardAnalytics.chats.waiting}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Con Operatore</p>
+                      <p className="text-2xl font-bold text-blue-500">{dashboardAnalytics.chats.withOperator}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1">Chiuse</p>
+                      <p className="text-2xl font-bold text-gray-500">{dashboardAnalytics.chats.closed}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                        <Archive className="h-3 w-3" />
+                        Archiviate
+                      </p>
+                      <p className="text-2xl font-bold text-purple-500">{dashboardAnalytics.chats.archived}</p>
+                    </div>
+                    <div className="bg-card border border-border rounded-lg p-4">
+                      <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                        <Flag className="h-3 w-3" />
+                        Segnalate
+                      </p>
+                      <p className="text-2xl font-bold text-orange-500">{dashboardAnalytics.chats.flagged}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tickets & Operators Row */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  {/* Ticket Stats */}
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Ticket className="h-5 w-5" />
+                      Statistiche Ticket
+                    </h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Totali</p>
+                        <p className="text-3xl font-bold">{dashboardAnalytics.tickets.total}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Pending</p>
+                        <p className="text-3xl font-bold text-yellow-500">{dashboardAnalytics.tickets.pending}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Aperti</p>
+                        <p className="text-3xl font-bold text-blue-500">{dashboardAnalytics.tickets.open}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Risolti</p>
+                        <p className="text-3xl font-bold text-green-500">{dashboardAnalytics.tickets.resolved}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Operator Stats */}
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      Statistiche Operatori
+                    </h3>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Totali</p>
+                        <p className="text-3xl font-bold">{dashboardAnalytics.operators.total}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Online</p>
+                        <p className="text-3xl font-bold text-green-500">{dashboardAnalytics.operators.online}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground mb-1">Disponibili</p>
+                        <p className="text-3xl font-bold text-blue-500">{dashboardAnalytics.operators.available}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Performance Metrics */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                      <Activity className="h-5 w-5" />
+                      Metriche Prestazioni
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Timer className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Tempo Risposta Medio</span>
+                        </div>
+                        <span className="text-2xl font-bold text-blue-500">
+                          {dashboardAnalytics.performance.avgResponseTimeMinutes !== null
+                            ? `${dashboardAnalytics.performance.avgResponseTimeMinutes} min`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Tempo Risoluzione Medio</span>
+                        </div>
+                        <span className="text-2xl font-bold text-purple-500">
+                          {dashboardAnalytics.performance.avgResolutionTimeHours !== null
+                            ? `${dashboardAnalytics.performance.avgResolutionTimeHours} ore`
+                            : 'N/A'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Top Performers */}
+                  <div className="bg-card border border-border rounded-lg p-6">
+                    <h3 className="text-lg font-semibold mb-4">Top Operatori</h3>
+                    <div className="space-y-2">
+                      {dashboardAnalytics.operators.topPerformers.slice(0, 5).map((op, idx) => (
+                        <div key={op.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-muted-foreground">#{idx + 1}</span>
+                            <span className="text-sm font-medium">{op.name}</span>
+                          </div>
+                          <div className="flex items-center gap-4 text-xs">
+                            <span className="text-muted-foreground">
+                              <MessageSquare className="h-3 w-3 inline mr-1" />
+                              {op.totalChatsHandled}
+                            </span>
+                            <span className="text-muted-foreground">
+                              <Ticket className="h-3 w-3 inline mr-1" />
+                              {op.totalTicketsHandled}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Quick Actions & System Status */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="bg-card border border-border rounded-lg p-6">
                 <h3 className="text-lg font-semibold mb-4">Azioni Rapide</h3>
