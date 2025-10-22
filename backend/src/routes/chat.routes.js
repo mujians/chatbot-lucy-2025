@@ -6,6 +6,11 @@ import {
   requestOperator,
   closeSession,
   getSessions,
+  deleteSession,
+  archiveSession,
+  unarchiveSession,
+  flagSession,
+  unflagSession,
 } from '../controllers/chat.controller.js';
 import { convertChatToTicket } from '../controllers/ticket.controller.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.middleware.js';
@@ -21,6 +26,11 @@ router.post('/session/:sessionId/request-operator', requestOperator);
 // Protected routes (for operators)
 router.get('/sessions', authenticateToken, getSessions);
 router.post('/session/:sessionId/close', authenticateToken, closeSession);
+router.delete('/sessions/:sessionId', authenticateToken, deleteSession);
+router.post('/sessions/:sessionId/archive', authenticateToken, archiveSession);
+router.post('/sessions/:sessionId/unarchive', authenticateToken, unarchiveSession);
+router.post('/sessions/:sessionId/flag', authenticateToken, flagSession);
+router.post('/sessions/:sessionId/unflag', authenticateToken, unflagSession);
 router.post('/session/:sessionId/convert-to-ticket', authenticateToken, convertChatToTicket);
 
 export default router;

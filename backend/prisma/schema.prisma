@@ -116,6 +116,16 @@ model ChatSession {
   operator                Operator? @relation(fields: [operatorId], references: [id])
   operatorJoinedAt        DateTime?
 
+  // Archive & Flag
+  isArchived              Boolean  @default(false)
+  archivedAt              DateTime?
+  archivedBy              String?
+  isFlagged               Boolean  @default(false)
+  flagReason              String?
+  flaggedBy               String?
+  flaggedAt               DateTime?
+  deletedAt               DateTime?  // Soft delete
+
   // Timestamps
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
@@ -127,6 +137,9 @@ model ChatSession {
 
   @@index([status])
   @@index([operatorId])
+  @@index([isArchived])
+  @@index([isFlagged])
+  @@index([deletedAt])
   @@index([lastMessageAt])
   @@index([createdAt])
 }

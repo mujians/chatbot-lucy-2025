@@ -302,15 +302,46 @@ export const closeSession = async (req, res) => {
 
 /**
  * Get all chat sessions (for operators)
- * GET /api/chat/sessions
+ * GET /api/chat/sessions?search=keyword&status=ACTIVE&isArchived=false&isFlagged=true&dateFrom=...&dateTo=...
  */
 export const getSessions = async (req, res) => {
   try {
-    const { status, operatorId } = req.query;
+    const { status, operatorId, search, isArchived, isFlagged, dateFrom, dateTo, limit = 50 } = req.query;
 
-    const where = {};
+    const where = {
+      deletedAt: null, // Exclude soft-deleted chats
+    };
+
+    // Status filter
     if (status) where.status = status;
+
+    // Operator filter
     if (operatorId) where.operatorId = operatorId;
+
+    // Archive filter
+    if (isArchived !== undefined) {
+      where.isArchived = isArchived === 'true';
+    }
+
+    // Flag filter
+    if (isFlagged !== undefined) {
+      where.isFlagged = isFlagged === 'true';
+    }
+
+    // Search in userName or messages
+    if (search) {
+      where.OR = [
+        { userName: { contains: search, mode: 'insensitive' } },
+        { messages: { string_contains: search } }, // Search in JSON
+      ];
+    }
+
+    // Date range filter
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) where.createdAt.gte = new Date(dateFrom);
+      if (dateTo) where.createdAt.lte = new Date(dateTo);
+    }
 
     const sessions = await prisma.chatSession.findMany({
       where,
@@ -323,7 +354,7 @@ export const getSessions = async (req, res) => {
         },
       },
       orderBy: { lastMessageAt: 'desc' },
-      take: 50,
+      take: parseInt(limit),
     });
 
     res.json({
@@ -332,6 +363,172 @@ export const getSessions = async (req, res) => {
     });
   } catch (error) {
     console.error('Get sessions error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Delete chat session (soft delete)
+ * DELETE /api/chat/sessions/:sessionId
+ */
+export const deleteSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    // Notify via WebSocket
+    io.to('dashboard').emit('chat_deleted', { sessionId });
+
+    res.json({
+      success: true,
+      message: 'Chat deleted successfully',
+      data: session,
+    });
+  } catch (error) {
+    console.error('Delete session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Archive chat session
+ * POST /api/chat/sessions/:sessionId/archive
+ */
+export const archiveSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        isArchived: true,
+        archivedAt: new Date(),
+        archivedBy: req.operator.id,
+      },
+    });
+
+    // Notify via WebSocket
+    io.to('dashboard').emit('chat_archived', { sessionId });
+
+    res.json({
+      success: true,
+      message: 'Chat archived successfully',
+      data: session,
+    });
+  } catch (error) {
+    console.error('Archive session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Unarchive chat session
+ * POST /api/chat/sessions/:sessionId/unarchive
+ */
+export const unarchiveSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        isArchived: false,
+        archivedAt: null,
+        archivedBy: null,
+      },
+    });
+
+    // Notify via WebSocket
+    io.to('dashboard').emit('chat_unarchived', { sessionId });
+
+    res.json({
+      success: true,
+      message: 'Chat unarchived successfully',
+      data: session,
+    });
+  } catch (error) {
+    console.error('Unarchive session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Flag chat session
+ * POST /api/chat/sessions/:sessionId/flag
+ */
+export const flagSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { reason } = req.body;
+
+    const session = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        isFlagged: true,
+        flagReason: reason || 'Flagged by operator',
+        flaggedBy: req.operator.id,
+        flaggedAt: new Date(),
+      },
+    });
+
+    // Notify via WebSocket
+    io.to('dashboard').emit('chat_flagged', { sessionId, reason });
+
+    res.json({
+      success: true,
+      message: 'Chat flagged successfully',
+      data: session,
+    });
+  } catch (error) {
+    console.error('Flag session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Unflag chat session
+ * POST /api/chat/sessions/:sessionId/unflag
+ */
+export const unflagSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        isFlagged: false,
+        flagReason: null,
+        flaggedBy: null,
+        flaggedAt: null,
+      },
+    });
+
+    // Notify via WebSocket
+    io.to('dashboard').emit('chat_unflagged', { sessionId });
+
+    res.json({
+      success: true,
+      message: 'Chat unflagged successfully',
+      data: session,
+    });
+  } catch (error) {
+    console.error('Unflag session error:', error);
     res.status(500).json({
       error: { message: 'Internal server error' },
     });
