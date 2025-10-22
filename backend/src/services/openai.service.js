@@ -83,9 +83,13 @@ export async function generateAIResponse(userMessage, chatHistory = []) {
         content: `Sei Lucy, l'assistente virtuale delle Lucine di Natale.
 Sei gentile, professionale e cordiale.
 Rispondi in italiano in modo conciso e chiaro.
-Se hai informazioni dalla knowledge base, usale per rispondere.
-Se non sei sicuro, suggerisci di parlare con un operatore umano.
 
+IMPORTANTE - Rilevamento Richieste Operatore:
+- Se l'utente chiede esplicitamente di parlare con una persona umana, un operatore, assistenza umana, o supporto diretto, rispondi: "Capisco che preferisci parlare con una persona. Ti metto in contatto con un operatore!"
+- Se l'utente esprime frustrazione o insoddisfazione, considera di suggerire un operatore
+- Se non hai informazioni sufficienti per rispondere con certezza, ammettilo e suggerisci un operatore
+
+Usa la knowledge base se disponibile per dare risposte precise.
 ${context ? `\n${context}` : ''}`,
       },
     ];
@@ -116,11 +120,14 @@ ${context ? `\n${context}` : ''}`,
     const aiMessage = response.choices[0].message.content;
     const confidence = calculateConfidence(kbResults.length, response.choices[0].finish_reason);
 
+    // Semantic detection: check if AI explicitly mentions connecting to operator
+    const operatorMentioned = /metto in contatto|parla con un operatore|contattare un operatore|assistenza umana|operatore ti aiuterà/i.test(aiMessage);
+
     return {
       message: aiMessage,
       confidence: confidence,
       hasKnowledgeBaseResults: kbResults.length > 0,
-      suggestOperator: confidence < config.kb.confidenceThreshold,
+      suggestOperator: confidence < config.kb.confidenceThreshold || operatorMentioned,
     };
   } catch (error) {
     console.error('Generate AI response error:', error);
