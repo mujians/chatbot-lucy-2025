@@ -68,7 +68,8 @@ model Operator {
   role                    OperatorRole @default(OPERATOR)
 
   // Availability
-  isOnline                Boolean  @default(false)
+  isOnline                Boolean  @default(false)  // Connected to dashboard
+  isAvailable             Boolean  @default(false)  // Available to receive new chats
   lastSeenAt              DateTime @default(now())
 
   // Notification settings
@@ -91,6 +92,7 @@ model Operator {
 
   @@index([email])
   @@index([isOnline])
+  @@index([isAvailable])
 }
 
 model ChatSession {

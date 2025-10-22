@@ -180,14 +180,17 @@ export const requestOperator = async (req, res) => {
       });
     }
 
-    // Check if any operators are online
-    const onlineOperators = await prisma.operator.findMany({
-      where: { isOnline: true },
+    // Check if any operators are online AND available
+    const availableOperators = await prisma.operator.findMany({
+      where: {
+        isOnline: true,      // Connected to dashboard
+        isAvailable: true,   // Available to receive new chats
+      },
       orderBy: { totalChatsHandled: 'asc' }, // Least busy first
     });
 
-    if (onlineOperators.length === 0) {
-      // No operators online - suggest ticket
+    if (availableOperators.length === 0) {
+      // No operators available - suggest ticket
       return res.json({
         success: true,
         data: {
@@ -198,7 +201,7 @@ export const requestOperator = async (req, res) => {
     }
 
     // Assign to least busy operator
-    const assignedOperator = onlineOperators[0];
+    const assignedOperator = availableOperators[0];
 
     // Update session
     await prisma.chatSession.update({

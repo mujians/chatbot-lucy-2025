@@ -4,17 +4,17 @@ import bcrypt from 'bcryptjs';
 import { sendEmailNotification } from '../services/notification.service.js';
 
 /**
- * Toggle operator availability (online/offline)
+ * Toggle operator availability (available to receive chats)
  * POST /api/operators/me/toggle-availability
  */
 export const toggleAvailability = async (req, res) => {
   try {
-    const { isOnline } = req.body;
+    const { isAvailable } = req.body;
 
     const operator = await prisma.operator.update({
       where: { id: req.operator.id },
       data: {
-        isOnline: isOnline,
+        isAvailable: isAvailable,
         lastSeenAt: new Date(),
       },
       select: {
@@ -22,14 +22,16 @@ export const toggleAvailability = async (req, res) => {
         email: true,
         name: true,
         isOnline: true,
+        isAvailable: true,
       },
     });
 
-    // Broadcast operator status change via WebSocket
-    io.to('dashboard').emit('operator_status_changed', {
+    // Broadcast operator availability change via WebSocket
+    io.to('dashboard').emit('operator_availability_changed', {
       operatorId: operator.id,
       operatorName: operator.name,
       isOnline: operator.isOnline,
+      isAvailable: operator.isAvailable,
     });
 
     res.json({
@@ -90,6 +92,7 @@ export const getOperators = async (req, res) => {
         name: true,
         role: true,
         isOnline: true,
+        isAvailable: true,
         totalChatsHandled: true,
         totalTicketsHandled: true,
         createdAt: true,
@@ -110,17 +113,21 @@ export const getOperators = async (req, res) => {
 };
 
 /**
- * Get online operators (for chat assignment)
+ * Get online and available operators (for chat assignment)
  * GET /api/operators/online
  */
 export const getOnlineOperators = async (req, res) => {
   try {
     const operators = await prisma.operator.findMany({
-      where: { isOnline: true },
+      where: {
+        isOnline: true,
+        isAvailable: true,
+      },
       select: {
         id: true,
         name: true,
         email: true,
+        isAvailable: true,
         totalChatsHandled: true,
       },
       orderBy: { totalChatsHandled: 'asc' }, // Least busy first
