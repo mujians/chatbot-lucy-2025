@@ -534,3 +534,109 @@ export const unflagSession = async (req, res) => {
     });
   }
 };
+
+/**
+ * Transfer chat session to another operator
+ * POST /api/chat/sessions/:sessionId/transfer
+ */
+export const transferSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { toOperatorId, reason } = req.body;
+
+    if (!toOperatorId) {
+      return res.status(400).json({
+        error: { message: 'Target operator ID is required' },
+      });
+    }
+
+    // Get current session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        operator: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Chat session not found' },
+      });
+    }
+
+    // Get target operator
+    const targetOperator = await prisma.operator.findUnique({
+      where: { id: toOperatorId },
+      select: { id: true, name: true, isOnline: true, isAvailable: true },
+    });
+
+    if (!targetOperator) {
+      return res.status(404).json({
+        error: { message: 'Target operator not found' },
+      });
+    }
+
+    if (!targetOperator.isOnline || !targetOperator.isAvailable) {
+      return res.status(400).json({
+        error: { message: 'Target operator is not available' },
+      });
+    }
+
+    // Parse messages and add system message
+    const messages = JSON.parse(session.messages || '[]');
+    const transferMessage = {
+      id: Date.now().toString(),
+      type: 'system',
+      content: `Chat trasferita da ${session.operator?.name || 'operatore'} a ${targetOperator.name}${reason ? `. Motivo: ${reason}` : ''}`,
+      timestamp: new Date().toISOString(),
+    };
+    messages.push(transferMessage);
+
+    // Update session
+    const updatedSession = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        operatorId: toOperatorId,
+        messages: JSON.stringify(messages),
+      },
+      include: {
+        operator: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // Notify both operators via WebSocket
+    io.to(`operator:${session.operatorId}`).emit('chat_transferred_from_you', {
+      sessionId,
+      toOperator: targetOperator,
+      reason,
+    });
+
+    io.to(`operator:${toOperatorId}`).emit('chat_transferred_to_you', {
+      sessionId,
+      fromOperator: session.operator,
+      reason,
+    });
+
+    // Notify dashboard
+    io.to('dashboard').emit('chat_transferred', {
+      sessionId,
+      fromOperatorId: session.operatorId,
+      toOperatorId,
+    });
+
+    res.json({
+      success: true,
+      message: 'Chat transferred successfully',
+      data: updatedSession,
+    });
+  } catch (error) {
+    console.error('Transfer session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};

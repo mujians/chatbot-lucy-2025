@@ -11,6 +11,7 @@ import {
   unarchiveSession,
   flagSession,
   unflagSession,
+  transferSession,
 } from '../controllers/chat.controller.js';
 import { convertChatToTicket } from '../controllers/ticket.controller.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.middleware.js';
@@ -31,6 +32,7 @@ router.post('/sessions/:sessionId/archive', authenticateToken, archiveSession);
 router.post('/sessions/:sessionId/unarchive', authenticateToken, unarchiveSession);
 router.post('/sessions/:sessionId/flag', authenticateToken, flagSession);
 router.post('/sessions/:sessionId/unflag', authenticateToken, unflagSession);
+router.post('/sessions/:sessionId/transfer', authenticateToken, transferSession);
 router.post('/session/:sessionId/convert-to-ticket', authenticateToken, convertChatToTicket);
 
 export default router;
