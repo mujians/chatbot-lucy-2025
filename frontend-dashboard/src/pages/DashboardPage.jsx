@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import axios from '../lib/axios';
 import { io } from 'socket.io-client';
 import {
   Home,
@@ -64,9 +64,22 @@ const DashboardPage = () => {
   useEffect(() => {
     const storedOperator = localStorage.getItem('operator');
     if (storedOperator) {
-      setOperator(JSON.parse(storedOperator));
+      const op = JSON.parse(storedOperator);
+      setOperator(op);
+      // Load current availability status
+      loadOperatorStatus();
     }
   }, []);
+
+  const loadOperatorStatus = async () => {
+    try {
+      const response = await axios.get('/api/operators/me');
+      setIsOnline(response.data.data?.isAvailable || false);
+    } catch (error) {
+      console.error('Error loading operator status:', error);
+      // 401 is handled by axios interceptor
+    }
+  };
 
   useEffect(() => {
     if (operator) {
@@ -124,18 +137,10 @@ const DashboardPage = () => {
 
   const fetchDashboardStats = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
-
       const [chatsRes, ticketsRes, analyticsRes] = await Promise.all([
-        axios.get(`${API_URL}/chats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get(`${API_URL}/tickets`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        axios.get(`${API_URL}/analytics/dashboard`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
+        axios.get('/api/chat/sessions'),
+        axios.get('/api/tickets'),
+        axios.get('/api/analytics/dashboard'),
       ]);
 
       const chats = chatsRes.data.data?.chats || [];
@@ -178,18 +183,21 @@ const DashboardPage = () => {
 
   const toggleAvailability = async () => {
     try {
-      const token = localStorage.getItem('auth_token');
+      const response = await axios.post('/api/operators/me/toggle-availability');
 
-      const response = await axios.post(
-        `${API_URL}/operators/me/toggle-availability`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
+      setIsOnline(response.data.data?.isAvailable || false);
+      addNotification(
+        response.data.data?.isAvailable
+          ? 'Sei ora disponibile per nuove chat'
+          : 'Sei ora non disponibile',
+        'success'
       );
-
-      setIsOnline(response.data.data.isOnline);
     } catch (error) {
       console.error('Error toggling availability:', error);
-      alert('Errore durante il cambio di disponibilità');
+      // 401 is handled by axios interceptor
+      if (error.response?.status !== 401) {
+        alert('Errore durante il cambio di disponibilità');
+      }
     }
   };
 
