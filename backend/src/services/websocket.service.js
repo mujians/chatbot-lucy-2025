@@ -17,12 +17,16 @@ export function setupWebSocketHandlers(io) {
     socket.on('join_chat', async (sessionId) => {
       try {
         socket.join(`chat:${sessionId}`);
-        console.log(`👤 User joined chat: ${sessionId}`);
+        console.log(`👤 USER JOINED CHAT - Socket: ${socket.id}, SessionID: ${sessionId}`);
+
+        // Check room size after join
+        const roomSockets = await io.in(`chat:${sessionId}`).fetchSockets();
+        console.log(`📡 Room 'chat:${sessionId}' now has ${roomSockets.length} socket(s): ${roomSockets.map(s => s.id).join(', ')}`);
 
         // Emit confirmation
         socket.emit('chat_joined', { sessionId });
       } catch (error) {
-        console.error('Join chat error:', error);
+        console.error('❌ Join chat error:', error);
         socket.emit('error', { message: 'Failed to join chat' });
       }
     });
@@ -169,11 +173,14 @@ export function setupWebSocketHandlers(io) {
      */
     socket.on('operator_message', async ({ sessionId, message, operatorId }) => {
       try {
+        console.log(`📤 OPERATOR MESSAGE - SessionID: ${sessionId}, Operator: ${operatorId}, Message: "${message}"`);
+
         const session = await prisma.chatSession.findUnique({
           where: { id: sessionId },
         });
 
         if (!session) {
+          console.log(`❌ OPERATOR MESSAGE FAILED - Session ${sessionId} not found`);
           socket.emit('error', { message: 'Session not found' });
           return;
         }
@@ -206,15 +213,20 @@ export function setupWebSocketHandlers(io) {
           },
         });
 
+        // Check who's in the room
+        const roomSockets = await io.in(`chat:${sessionId}`).fetchSockets();
+        console.log(`📡 Room 'chat:${sessionId}' has ${roomSockets.length} sockets: ${roomSockets.map(s => s.id).join(', ')}`);
+
         // Send to user
         io.to(`chat:${sessionId}`).emit('operator_message', {
           message: operatorMessage,
         });
+        console.log(`✅ OPERATOR MESSAGE SENT to room 'chat:${sessionId}'`);
 
         // Confirm to operator
         socket.emit('message_sent', { message: operatorMessage });
       } catch (error) {
-        console.error('Operator message error:', error);
+        console.error('❌ Operator message error:', error);
         socket.emit('error', { message: 'Failed to send message' });
       }
     });
