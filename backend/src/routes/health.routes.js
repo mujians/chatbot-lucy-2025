@@ -1,6 +1,6 @@
 import express from 'express';
 import { getSystemHealth, getHealthQuick, getSystemLogs } from '../controllers/health.controller.js';
-import { authenticate } from '../middleware/auth.middleware.js';
+import { authenticateToken } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -14,12 +14,12 @@ router.get('/', getHealthQuick);
  * Comprehensive system health check (authenticated)
  * GET /api/health/system
  */
-router.get('/system', authenticate, getSystemHealth);
+router.get('/system', authenticateToken, getSystemHealth);
 
 /**
  * System logs (authenticated, admin only recommended)
  * GET /api/health/logs?limit=50
  */
-router.get('/logs', authenticate, getSystemLogs);
+router.get('/logs', authenticateToken, getSystemLogs);
 
 export default router;
