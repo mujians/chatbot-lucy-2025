@@ -118,6 +118,18 @@ export const getOperators = async (req, res) => {
  */
 export const getOnlineOperators = async (req, res) => {
   try {
+    // Debug: get ALL operators to see what's in DB
+    const allOperators = await prisma.operator.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isOnline: true,
+        isAvailable: true,
+      },
+    });
+    console.log('🔍 ALL OPERATORS IN DB:', JSON.stringify(allOperators, null, 2));
+
     const operators = await prisma.operator.findMany({
       where: {
         isOnline: true,
@@ -133,13 +145,16 @@ export const getOnlineOperators = async (req, res) => {
       orderBy: { totalChatsHandled: 'asc' }, // Least busy first
     });
 
+    console.log('✅ FOUND AVAILABLE OPERATORS:', operators.length);
+    console.log('📊 OPERATORS DATA:', JSON.stringify(operators, null, 2));
+
     res.json({
       success: true,
       data: operators,
       count: operators.length,
     });
   } catch (error) {
-    console.error('Get online operators error:', error);
+    console.error('❌ Get online operators error:', error);
     res.status(500).json({
       error: { message: 'Internal server error' },
     });

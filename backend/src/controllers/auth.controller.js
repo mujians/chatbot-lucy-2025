@@ -58,14 +58,22 @@ export const login = async (req, res) => {
     );
 
     // Update last seen and set online + available
-    await prisma.operator.update({
+    const updated = await prisma.operator.update({
       where: { id: operator.id },
       data: {
         isOnline: true,
         isAvailable: true,
         lastSeenAt: new Date(),
       },
+      select: {
+        id: true,
+        email: true,
+        isOnline: true,
+        isAvailable: true,
+      },
     });
+
+    console.log('🔐 LOGIN - Updated operator status:', JSON.stringify(updated, null, 2));
 
     // Remove password from response
     const { passwordHash, ...operatorData } = operator;
