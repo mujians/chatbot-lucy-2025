@@ -296,7 +296,7 @@ export function setupWebSocketHandlers(io) {
     socket.on('disconnect', async () => {
       console.log(`❌ Client disconnected: ${socket.id}`);
 
-      // If operator disconnects, set offline and unavailable
+      // If operator disconnects, set offline ONLY (availability is managed manually by operator)
       const operatorId = socket.data.operatorId;
       if (operatorId) {
         try {
@@ -304,7 +304,7 @@ export function setupWebSocketHandlers(io) {
             where: { id: operatorId },
             data: {
               isOnline: false,
-              isAvailable: false,
+              // NOTE: isAvailable is NOT changed - operator manages this manually
               lastSeenAt: new Date(),
             },
           });
@@ -314,7 +314,6 @@ export function setupWebSocketHandlers(io) {
           io.to('dashboard').emit('operator_status_changed', {
             operatorId,
             isOnline: false,
-            isAvailable: false,
           });
         } catch (error) {
           console.error('Error updating operator status on disconnect:', error);
