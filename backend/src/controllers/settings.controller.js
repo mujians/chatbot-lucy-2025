@@ -181,3 +181,56 @@ export const deleteSetting = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get public widget settings (no auth required)
+ * GET /api/settings/public
+ * Returns only widget-related settings for frontend widget
+ */
+export const getPublicSettings = async (req, res) => {
+  try {
+    // Fetch only widget-related settings
+    const widgetKeys = [
+      'widgetPrimaryColor',
+      'widgetPosition',
+      'widgetGreeting',
+      'widgetTitle',
+      'widgetSubtitle',
+    ];
+
+    const settings = await prisma.systemSettings.findMany({
+      where: {
+        key: { in: widgetKeys },
+      },
+      select: {
+        key: true,
+        value: true,
+      },
+    });
+
+    // Convert array to object for easier access
+    const settingsMap = settings.reduce((acc, setting) => {
+      acc[setting.key] = setting.value;
+      return acc;
+    }, {});
+
+    // Set defaults if not configured
+    const widgetSettings = {
+      primaryColor: settingsMap.widgetPrimaryColor || '#4F46E5',
+      position: settingsMap.widgetPosition || 'bottom-right',
+      greeting: settingsMap.widgetGreeting || 'Ciao! Come possiamo aiutarti?',
+      title: settingsMap.widgetTitle || 'Chat con noi',
+      subtitle: settingsMap.widgetSubtitle || 'Siamo qui per aiutarti',
+    };
+
+    res.json({
+      success: true,
+      data: widgetSettings,
+    });
+  } catch (error) {
+    console.error('Get public settings error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
