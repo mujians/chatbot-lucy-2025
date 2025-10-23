@@ -163,6 +163,78 @@ export const sendUserMessage = async (req, res) => {
 };
 
 /**
+ * Send operator message (from dashboard)
+ * POST /api/chat/session/:sessionId/operator-message
+ */
+export const sendOperatorMessage = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { message } = req.body;
+    const operatorId = req.operator.id; // From auth middleware
+
+    // Get session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    // Get operator name
+    const operator = await prisma.operator.findUnique({
+      where: { id: operatorId },
+      select: { name: true },
+    });
+
+    // Parse messages
+    const messages = JSON.parse(session.messages || '[]');
+
+    // Add operator message
+    const operatorMessage = {
+      id: Date.now().toString(),
+      type: 'operator',
+      content: message,
+      operatorName: operator.name,
+      timestamp: new Date().toISOString(),
+    };
+    messages.push(operatorMessage);
+
+    // Update session
+    await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        messages: JSON.stringify(messages),
+        lastMessageAt: new Date(),
+      },
+    });
+
+    // Send to user via WebSocket
+    io.to(`chat:${sessionId}`).emit('operator_message', {
+      message: operatorMessage,
+    });
+
+    // Also notify dashboard
+    io.to('dashboard').emit('message_sent', {
+      sessionId,
+      operatorId,
+    });
+
+    res.json({
+      success: true,
+      data: { message: operatorMessage },
+    });
+  } catch (error) {
+    console.error('Send operator message error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
  * Request operator (for user)
  * POST /api/chat/session/:sessionId/request-operator
  */
