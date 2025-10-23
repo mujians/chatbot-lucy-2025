@@ -57,11 +57,12 @@ export const login = async (req, res) => {
       { expiresIn: config.jwtExpiresIn }
     );
 
-    // Update last seen and set online
+    // Update last seen and set online + available
     await prisma.operator.update({
       where: { id: operator.id },
       data: {
         isOnline: true,
+        isAvailable: true,
         lastSeenAt: new Date(),
       },
     });
