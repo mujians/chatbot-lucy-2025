@@ -93,6 +93,81 @@ async function addMessagesWithLock(sessionId, newMessages, additionalData = {}) 
 }
 
 /**
+ * BUG #5 FIX: Add internal note with pessimistic locking
+ * Prevents race conditions when multiple operators add notes simultaneously
+ */
+async function addInternalNoteWithLock(sessionId, newNote) {
+  return await prisma.$transaction(async (tx) => {
+    // Step 1: Lock the session row with FOR UPDATE
+    const session = await tx.$queryRaw`
+      SELECT * FROM "ChatSession"
+      WHERE id = ${sessionId}::uuid
+      FOR UPDATE
+    `;
+
+    if (!session || session.length === 0) {
+      throw new Error('Session not found');
+    }
+
+    // Step 2: Parse existing notes safely
+    const notes = JSON.parse(session[0].internalNotes || '[]');
+
+    // Step 3: Add new note
+    notes.push(newNote);
+
+    // Step 4: Update with new notes array
+    const updated = await tx.chatSession.update({
+      where: { id: sessionId },
+      data: { internalNotes: JSON.stringify(notes) },
+    });
+
+    return updated;
+  });
+}
+
+/**
+ * BUG #5 FIX: Update internal note with pessimistic locking
+ * Prevents race conditions when modifying notes
+ */
+async function updateInternalNoteWithLock(sessionId, noteId, updatedContent) {
+  return await prisma.$transaction(async (tx) => {
+    // Step 1: Lock the session row with FOR UPDATE
+    const session = await tx.$queryRaw`
+      SELECT * FROM "ChatSession"
+      WHERE id = ${sessionId}::uuid
+      FOR UPDATE
+    `;
+
+    if (!session || session.length === 0) {
+      throw new Error('Session not found');
+    }
+
+    // Step 2: Parse existing notes safely
+    const notes = JSON.parse(session[0].internalNotes || '[]');
+
+    // Step 3: Find and update the note
+    const noteIndex = notes.findIndex(note => note.id === noteId);
+    if (noteIndex === -1) {
+      throw new Error('Note not found');
+    }
+
+    notes[noteIndex] = {
+      ...notes[noteIndex],
+      content: updatedContent,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Step 4: Update with modified notes array
+    const updated = await tx.chatSession.update({
+      where: { id: sessionId },
+      data: { internalNotes: JSON.stringify(notes) },
+    });
+
+    return updated;
+  });
+}
+
+/**
  * Create new chat session
  * POST /api/chat/session
  */
@@ -1047,8 +1122,7 @@ export const addInternalNote = async (req, res) => {
       });
     }
 
-    const notes = JSON.parse(session.internalNotes || '[]');
-
+    // Create new note
     const newNote = {
       id: Date.now().toString(),
       content: content.trim(),
@@ -1057,12 +1131,8 @@ export const addInternalNote = async (req, res) => {
       createdAt: new Date().toISOString(),
     };
 
-    notes.push(newNote);
-
-    const updated = await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { internalNotes: JSON.stringify(notes) },
-    });
+    // BUG #5 FIX: Use transaction-based helper to prevent race conditions
+    const updated = await addInternalNoteWithLock(sessionId, newNote);
 
     console.log(`✅ P0.3: Internal note added to chat ${sessionId} by ${req.operator.name}`);
 
