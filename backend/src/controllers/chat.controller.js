@@ -1,5 +1,4 @@
 import { prisma } from '../server.js';
-import { Prisma } from '@prisma/client';
 import { io } from '../server.js';
 import { generateAIResponse } from '../services/openai.service.js';
 import { emailService } from '../services/email.service.js';
@@ -11,10 +10,11 @@ import { uploadService } from '../services/upload.service.js';
  */
 async function createMessage(sessionId, messageData, additionalSessionData = {}) {
   return await prisma.$transaction(async (tx) => {
-    // Step 1: Lock the session row with FOR UPDATE using Prisma.sql
+    // Step 1: Lock the session row with FOR UPDATE
+    // Cast column to text instead of casting parameter to uuid
     const session = await tx.$queryRaw`
       SELECT * FROM "ChatSession"
-      WHERE id = ${Prisma.raw(`'${sessionId}'::uuid`)}
+      WHERE id::text = ${sessionId}
       FOR UPDATE
     `;
 
@@ -60,10 +60,11 @@ async function createMessage(sessionId, messageData, additionalSessionData = {})
  */
 async function createMessages(sessionId, messagesData, additionalSessionData = {}) {
   return await prisma.$transaction(async (tx) => {
-    // Step 1: Lock the session row with FOR UPDATE using Prisma.sql
+    // Step 1: Lock the session row with FOR UPDATE
+    // Cast column to text instead of casting parameter to uuid
     const session = await tx.$queryRaw`
       SELECT * FROM "ChatSession"
-      WHERE id = ${Prisma.raw(`'${sessionId}'::uuid`)}
+      WHERE id::text = ${sessionId}
       FOR UPDATE
     `;
 
