@@ -29,6 +29,13 @@ enum ChatStatus {
   TICKET_CREATED
 }
 
+enum MessageType {
+  USER
+  OPERATOR
+  AI
+  SYSTEM
+}
+
 enum TicketStatus {
   PENDING
   ASSIGNED
@@ -172,6 +179,7 @@ model ChatSession {
   // Relations
   ticket                  Ticket?
   rating                  ChatRating?  // P1.2: Customer satisfaction rating
+  messagesNew             Message[]    // BUG #6: Separate messages table
 
   @@index([status])
   @@index([userId])
@@ -181,6 +189,45 @@ model ChatSession {
   @@index([deletedAt])
   @@index([lastMessageAt])
   @@index([createdAt])
+}
+
+// BUG #6: Separate Message table for better performance and scalability
+model Message {
+  id                      String      @id @default(uuid())
+
+  // Relation to chat session
+  sessionId               String
+  session                 ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  // Message type
+  type                    MessageType
+
+  // Content
+  content                 String      @db.Text
+
+  // Operator info (for operator messages)
+  operatorId              String?
+  operatorName            String?
+
+  // AI info (for AI messages)
+  aiConfidence            Float?      // 0-1
+  aiSuggestOperator       Boolean     @default(false)
+
+  // Attachment info (for file uploads)
+  attachmentUrl           String?
+  attachmentPublicId      String?
+  attachmentName          String?
+  attachmentMimetype      String?
+  attachmentResourceType  String?
+  attachmentSize          Int?
+
+  // Timestamps
+  createdAt               DateTime    @default(now())
+
+  @@index([sessionId])
+  @@index([type])
+  @@index([createdAt])
+  @@index([sessionId, createdAt]) // Composite index for efficient queries
 }
 
 // P1.2: Chat Rating (CSAT - Customer Satisfaction)
