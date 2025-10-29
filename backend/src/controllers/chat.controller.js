@@ -828,23 +828,22 @@ export const transferSession = async (req, res) => {
       });
     }
 
-    // Parse messages and add system message
-    const messages = parseMessages(session.messages);
+    // Create transfer system message
     const transferMessage = {
       id: Date.now().toString(),
       type: 'system',
       content: `Chat trasferita da ${session.operator?.name || 'operatore'} a ${targetOperator.name}${reason ? `. Motivo: ${reason}` : ''}`,
       timestamp: new Date().toISOString(),
     };
-    messages.push(transferMessage);
 
-    // Update session
-    const updatedSession = await prisma.chatSession.update({
+    // BUG #5 FIX: Add message and update operator in single transaction
+    await addMessageWithLock(sessionId, transferMessage, {
+      operatorId: toOperatorId,
+    });
+
+    // Fetch updated session with new operator details for response
+    const updatedSession = await prisma.chatSession.findUnique({
       where: { id: sessionId },
-      data: {
-        operatorId: toOperatorId,
-        messages: JSON.stringify(messages),
-      },
       include: {
         operator: {
           select: { id: true, name: true },
