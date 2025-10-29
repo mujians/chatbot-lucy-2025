@@ -128,6 +128,19 @@ const ChatWindow = ({ chat, onClose }) => {
       }
     });
 
+    // BUG #4 FIX: Listen for chat_closed event
+    newSocket.on('chat_closed', (data) => {
+      console.log('📨 Chat closed:', data);
+      if (data.sessionId === chat.id) {
+        // Add closing message to chat
+        if (data.message) {
+          setMessages((prev) => [...prev, data.message]);
+        }
+        // Refresh chat data to update status
+        fetchChat();
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
