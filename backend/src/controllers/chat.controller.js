@@ -1174,35 +1174,35 @@ export const updateInternalNote = async (req, res) => {
       });
     }
 
+    // Verify note exists and check permissions BEFORE transaction
     const notes = JSON.parse(session.internalNotes || '[]');
-    const noteIndex = notes.findIndex((n) => n.id === noteId);
+    const noteToUpdate = notes.find((n) => n.id === noteId);
 
-    if (noteIndex === -1) {
+    if (!noteToUpdate) {
       return res.status(404).json({
         error: { message: 'Note not found' },
       });
     }
 
     // Only allow operator to edit their own notes
-    if (notes[noteIndex].operatorId !== req.operator.id) {
+    if (noteToUpdate.operatorId !== req.operator.id) {
       return res.status(403).json({
         error: { message: 'You can only edit your own notes' },
       });
     }
 
-    notes[noteIndex].content = content.trim();
-    notes[noteIndex].updatedAt = new Date().toISOString();
+    // BUG #5 FIX: Use transaction-based helper to prevent race conditions
+    const updated = await updateInternalNoteWithLock(sessionId, noteId, content.trim());
 
-    const updated = await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { internalNotes: JSON.stringify(notes) },
-    });
+    // Get the updated note from the result
+    const updatedNotes = JSON.parse(updated.internalNotes || '[]');
+    const updatedNote = updatedNotes.find((n) => n.id === noteId);
 
     console.log(`✅ P0.3: Internal note ${noteId} updated in chat ${sessionId}`);
 
     res.json({
       success: true,
-      data: { note: notes[noteIndex], session: updated },
+      data: { note: updatedNote, session: updated },
       message: 'Internal note updated successfully',
     });
   } catch (error) {
