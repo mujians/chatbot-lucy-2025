@@ -473,13 +473,13 @@ export const closeSession = async (req, res) => {
     }
 
     // Notify via WebSocket with the closing message
-    io.to(`chat:${sessionId}`).emit('chat_closed', {
+    io.to(`chat_${sessionId}`).emit('chat_closed', {
       sessionId: sessionId,
       message: closingMessage,
     });
 
     // Also emit new message event for the widget
-    io.to(`chat:${sessionId}`).emit('new_message', closingMessage);
+    io.to(`chat_${sessionId}`).emit('new_message', closingMessage);
 
     res.json({
       success: true,
@@ -802,13 +802,13 @@ export const transferSession = async (req, res) => {
     });
 
     // Notify both operators via WebSocket
-    io.to(`operator:${session.operatorId}`).emit('chat_transferred_from_you', {
+    io.to(`operator_${session.operatorId}`).emit('chat_transferred_from_you', {
       sessionId,
       toOperator: targetOperator,
       reason,
     });
 
-    io.to(`operator:${toOperatorId}`).emit('chat_transferred_to_you', {
+    io.to(`operator_${toOperatorId}`).emit('chat_transferred_to_you', {
       sessionId,
       fromOperator: session.operator,
       reason,
