@@ -345,11 +345,19 @@ export const sendUserMessage = async (req, res) => {
         timestamp: result.message.createdAt.toISOString(),
       };
 
+      // Emit to operator's personal room
       io.to(`operator_${session.operatorId}`).emit('user_message', {
         sessionId: sessionId,
         userName: session.userName,
         message: userMessage,
         unreadCount: session.unreadMessageCount + 1,
+      });
+
+      // Also emit to chat room (for dashboard ChatWindow)
+      io.to(`chat_${sessionId}`).emit('user_message', {
+        sessionId: sessionId,
+        userName: session.userName,
+        message: userMessage,
       });
 
       return res.json({
@@ -734,14 +742,58 @@ export const getSessions = async (req, res) => {
             name: true,
           },
         },
+        // BUG #6: Include messages from Message table
+        messagesNew: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            content: true,
+            operatorId: true,
+            operatorName: true,
+            aiConfidence: true,
+            aiSuggestOperator: true,
+            attachmentUrl: true,
+            attachmentPublicId: true,
+            attachmentName: true,
+            attachmentMimetype: true,
+            attachmentResourceType: true,
+            attachmentSize: true,
+            createdAt: true,
+          },
+        },
       },
       orderBy: { lastMessageAt: 'desc' },
       take: parseInt(limit),
     });
 
+    // BUG #6: Convert messagesNew to legacy format for frontend compatibility
+    const sessionsWithMessages = sessions.map((session) => ({
+      ...session,
+      messages: session.messagesNew.map(msg => ({
+        id: msg.id,
+        type: msg.type.toLowerCase(),
+        content: msg.content,
+        timestamp: msg.createdAt.toISOString(),
+        ...(msg.operatorId && { operatorId: msg.operatorId, operatorName: msg.operatorName }),
+        ...(msg.aiConfidence !== null && { confidence: msg.aiConfidence, suggestOperator: msg.aiSuggestOperator }),
+        ...(msg.attachmentUrl && {
+          attachment: {
+            url: msg.attachmentUrl,
+            publicId: msg.attachmentPublicId,
+            originalName: msg.attachmentName,
+            mimetype: msg.attachmentMimetype,
+            resourceType: msg.attachmentResourceType,
+            size: msg.attachmentSize,
+          },
+        }),
+      })),
+      messagesNew: undefined, // Remove from response
+    }));
+
     res.json({
       success: true,
-      data: sessions,
+      data: sessionsWithMessages,
     });
   } catch (error) {
     console.error('Get sessions error:', error);
