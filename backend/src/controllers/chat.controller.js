@@ -771,7 +771,7 @@ export const transferSession = async (req, res) => {
       });
     }
 
-    if (!targetOperator.isOnline || !targetOperator.isAvailable) {
+    if (!targetOperator.isAvailable) {
       return res.status(400).json({
         error: { message: 'Target operator is not available' },
       });

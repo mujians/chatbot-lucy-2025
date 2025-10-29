@@ -205,10 +205,10 @@ const ChatWindow = ({ chat, onClose }) => {
       // axios instance already adds Authorization header via interceptor
       const response = await axios.get(`/api/operators`);
 
-      // Filter out current operator and offline operators
+      // Filter out current operator and unavailable operators
       const currentOperatorId = chat.operatorId;
       const available = response.data.data?.operators?.filter(
-        (op) => op.id !== currentOperatorId && op.isOnline && op.isAvailable
+        (op) => op.id !== currentOperatorId && op.isAvailable
       ) || [];
 
       setAvailableOperators(available);
