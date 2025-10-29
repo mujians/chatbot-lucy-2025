@@ -12,7 +12,7 @@
  *   - Does NOT delete the old JSON field (kept for backup)
  */
 
-const { PrismaClient } = require('@prisma/client');
+import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function migrateMessages() {
