@@ -24,7 +24,7 @@ function parseMessages(messagesString) {
  * BUG #5 FIX: Add message with pessimistic locking to prevent race conditions
  * Uses PostgreSQL FOR UPDATE to lock row during read-modify-write
  */
-async function addMessageWithLock(sessionId, newMessage) {
+async function addMessageWithLock(sessionId, newMessage, additionalData = {}) {
   return await prisma.$transaction(async (tx) => {
     // Step 1: Lock the session row with FOR UPDATE
     const session = await tx.$queryRaw`
@@ -43,10 +43,13 @@ async function addMessageWithLock(sessionId, newMessage) {
     // Step 3: Add new message
     messages.push(newMessage);
 
-    // Step 4: Update with new messages array
+    // Step 4: Update with new messages array and any additional data
     const updated = await tx.chatSession.update({
       where: { id: sessionId },
-      data: { messages: JSON.stringify(messages) },
+      data: {
+        messages: JSON.stringify(messages),
+        ...additionalData,
+      },
     });
 
     return updated;
@@ -415,9 +418,6 @@ export const sendOperatorMessage = async (req, res) => {
       });
     }
 
-    // Parse messages
-    const messages = parseMessages(session.messages);
-
     // Add operator message
     const operatorMessage = {
       id: Date.now().toString(),
@@ -428,15 +428,9 @@ export const sendOperatorMessage = async (req, res) => {
       operatorName: session.operator?.name || 'Operatore',
     };
 
-    messages.push(operatorMessage);
-
-    // Update session
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        lastMessageAt: new Date(),
-      },
+    // BUG #5 FIX: Use transaction-based helper to prevent race conditions
+    await addMessageWithLock(sessionId, operatorMessage, {
+      lastMessageAt: new Date(),
     });
 
     // Emit to user via Socket.IO
