@@ -5,94 +5,6 @@ import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
 
 /**
- * BUG #10 FIX: Safe JSON parsing with error handling
- * Prevents crashes when messages field contains invalid JSON
- */
-function parseMessages(messagesString) {
-  try {
-    const parsed = JSON.parse(messagesString || '[]');
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    console.error('❌ Failed to parse messages JSON:', error);
-    console.error('Invalid messages string:', messagesString?.substring(0, 100));
-    // Return empty array as fallback - chat continues working
-    return [];
-  }
-}
-
-/**
- * BUG #5 FIX: Add message with pessimistic locking to prevent race conditions
- * Uses PostgreSQL FOR UPDATE to lock row during read-modify-write
- */
-async function addMessageWithLock(sessionId, newMessage, additionalData = {}) {
-  return await prisma.$transaction(async (tx) => {
-    // Step 1: Lock the session row with FOR UPDATE
-    const session = await tx.$queryRaw`
-      SELECT * FROM "ChatSession"
-      WHERE id = ${sessionId}::uuid
-      FOR UPDATE
-    `;
-
-    if (!session || session.length === 0) {
-      throw new Error('Session not found');
-    }
-
-    // Step 2: Parse existing messages safely
-    const messages = parseMessages(session[0].messages);
-
-    // Step 3: Add new message
-    messages.push(newMessage);
-
-    // Step 4: Update with new messages array and any additional data
-    const updated = await tx.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        ...additionalData,
-      },
-    });
-
-    return updated;
-  });
-}
-
-/**
- * BUG #5 FIX: Add multiple messages with pessimistic locking
- * Used when adding user message + AI response in same transaction
- */
-async function addMessagesWithLock(sessionId, newMessages, additionalData = {}) {
-  return await prisma.$transaction(async (tx) => {
-    // Step 1: Lock the session row with FOR UPDATE
-    const session = await tx.$queryRaw`
-      SELECT * FROM "ChatSession"
-      WHERE id = ${sessionId}::uuid
-      FOR UPDATE
-    `;
-
-    if (!session || session.length === 0) {
-      throw new Error('Session not found');
-    }
-
-    // Step 2: Parse existing messages safely
-    const messages = parseMessages(session[0].messages);
-
-    // Step 3: Add all new messages
-    newMessages.forEach(msg => messages.push(msg));
-
-    // Step 4: Update with new messages array and any additional data
-    const updated = await tx.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        ...additionalData,
-      },
-    });
-
-    return updated;
-  });
-}
-
-/**
  * BUG #6: Create single message in Message table with transaction
  * Replaces addMessageWithLock for new Message model
  */
@@ -707,19 +619,24 @@ export const closeSession = async (req, res) => {
       });
     }
 
-    // Create system closing message
-    const closingMessage = {
-      id: Date.now().toString(),
-      type: 'system',
+    // BUG #6: Create system closing message in Message table with transaction
+    const result = await createMessage(sessionId, {
+      type: 'SYSTEM',
       content: 'La chat è stata chiusa dall\'operatore. Grazie per averci contattato!',
-      timestamp: new Date().toISOString(),
-    };
-
-    // BUG #5 FIX: Add message and update status in single transaction
-    const updatedSession = await addMessageWithLock(sessionId, closingMessage, {
+    }, {
       status: 'CLOSED',
       closedAt: new Date(),
     });
+
+    const updatedSession = result.session;
+
+    // Convert to legacy format for Socket.IO events
+    const closingMessage = {
+      id: result.message.id,
+      type: 'system',
+      content: result.message.content,
+      timestamp: result.message.createdAt.toISOString(),
+    };
 
     // P0.4: Send chat transcript email if user provided email
     if (updatedSession.userEmail) {
@@ -1047,16 +964,11 @@ export const transferSession = async (req, res) => {
       });
     }
 
-    // Create transfer system message
-    const transferMessage = {
-      id: Date.now().toString(),
-      type: 'system',
+    // BUG #6: Create transfer system message in Message table with transaction
+    await createMessage(sessionId, {
+      type: 'SYSTEM',
       content: `Chat trasferita da ${session.operator?.name || 'operatore'} a ${targetOperator.name}${reason ? `. Motivo: ${reason}` : ''}`,
-      timestamp: new Date().toISOString(),
-    };
-
-    // BUG #5 FIX: Add message and update operator in single transaction
-    await addMessageWithLock(sessionId, transferMessage, {
+    }, {
       operatorId: toOperatorId,
     });
 
@@ -1432,7 +1344,7 @@ export const getUserHistory = async (req, res) => {
       });
     }
 
-    // Get all chat sessions for this user
+    // BUG #6: Get all chat sessions for this user with messages from Message table
     const sessions = await prisma.chatSession.findMany({
       where: { userId: userId },
       orderBy: { createdAt: 'desc' },
@@ -1448,18 +1360,54 @@ export const getUserHistory = async (req, res) => {
             name: true,
           },
         },
-        messages: true,
+        messagesNew: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            type: true,
+            content: true,
+            operatorId: true,
+            operatorName: true,
+            aiConfidence: true,
+            aiSuggestOperator: true,
+            attachmentUrl: true,
+            attachmentPublicId: true,
+            attachmentName: true,
+            attachmentMimetype: true,
+            attachmentResourceType: true,
+            attachmentSize: true,
+            createdAt: true,
+          },
+        },
         priority: true,
         tags: true,
         aiConfidence: true,
       },
     });
 
-    // Parse messages for each session
+    // BUG #6: Convert messages to legacy format
     const sessionsWithParsedMessages = sessions.map((session) => ({
       ...session,
-      messages: parseMessages(session.messages),
-      messageCount: parseMessages(session.messages).length,
+      messages: session.messagesNew.map(msg => ({
+        id: msg.id,
+        type: msg.type.toLowerCase(),
+        content: msg.content,
+        timestamp: msg.createdAt.toISOString(),
+        ...(msg.operatorId && { operatorId: msg.operatorId, operatorName: msg.operatorName }),
+        ...(msg.aiConfidence !== null && { confidence: msg.aiConfidence, suggestOperator: msg.aiSuggestOperator }),
+        ...(msg.attachmentUrl && {
+          attachment: {
+            url: msg.attachmentUrl,
+            publicId: msg.attachmentPublicId,
+            originalName: msg.attachmentName,
+            mimetype: msg.attachmentMimetype,
+            resourceType: msg.attachmentResourceType,
+            size: msg.attachmentSize,
+          },
+        }),
+      })),
+      messageCount: session.messagesNew.length,
+      messagesNew: undefined, // Remove messagesNew from response
     }));
 
     console.log(`✅ P0.2: User history loaded for ${user.email || userId} (${sessions.length} sessions)`);
@@ -1521,38 +1469,43 @@ export const uploadFile = async (req, res) => {
       file.mimetype
     );
 
-    // Create message with file attachment
-    const messages = parseMessages(session.messages);
+    // BUG #6: Create message with file attachment in Message table with transaction
     const isOperator = !!req.operator; // Check if authenticated (operator) or public (user)
 
-    const newMessage = {
-      id: Date.now().toString(),
-      type: isOperator ? 'operator' : 'user',
+    const result = await createMessage(sessionId, {
+      type: isOperator ? 'OPERATOR' : 'USER',
       content: `📎 ${file.originalname}`,
-      attachment: {
-        url: uploadResult.url,
-        publicId: uploadResult.publicId,
-        originalName: uploadResult.originalName,
-        mimetype: uploadResult.mimetype,
-        size: uploadResult.bytes,
-        resourceType: uploadResult.resourceType,
-        ...(uploadResult.width && { width: uploadResult.width }),
-        ...(uploadResult.height && { height: uploadResult.height }),
-      },
-      timestamp: new Date().toISOString(),
-      ...(isOperator && { operatorName: req.operator.name, operatorId: req.operator.id }),
-    };
-
-    messages.push(newMessage);
-
-    // Update session
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        lastMessageAt: new Date(),
-      },
+      attachmentUrl: uploadResult.url,
+      attachmentPublicId: uploadResult.publicId,
+      attachmentName: uploadResult.originalName,
+      attachmentMimetype: uploadResult.mimetype,
+      attachmentSize: uploadResult.bytes,
+      attachmentResourceType: uploadResult.resourceType,
+      ...(isOperator && {
+        operatorName: req.operator.name,
+        operatorId: req.operator.id
+      }),
     });
+
+    // Convert to legacy format for Socket.IO events
+    const newMessage = {
+      id: result.message.id,
+      type: isOperator ? 'operator' : 'user',
+      content: result.message.content,
+      attachment: {
+        url: result.message.attachmentUrl,
+        publicId: result.message.attachmentPublicId,
+        originalName: result.message.attachmentName,
+        mimetype: result.message.attachmentMimetype,
+        size: result.message.attachmentSize,
+        resourceType: result.message.attachmentResourceType,
+      },
+      timestamp: result.message.createdAt.toISOString(),
+      ...(isOperator && {
+        operatorName: result.message.operatorName,
+        operatorId: result.message.operatorId
+      }),
+    };
 
     // Emit via WebSocket
     const eventName = isOperator ? 'operator_message' : 'user_message';
