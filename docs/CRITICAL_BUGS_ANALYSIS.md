@@ -248,8 +248,9 @@ newSocket.on('chat_closed', (data) => {
 
 ## 🟠 HIGH PRIORITY - Race Conditions & Data Loss
 
-### BUG #5: Race Condition in Message Updates ⚠️ DATA LOSS
+### ⏳ BUG #5: Race Condition in Message Updates ⚠️ DATA LOSS [POSTPONED]
 
+**Status**: ⏳ TODO - Fix complesso, richiede refactoring 7 funzioni
 **File**: `backend/src/controllers/chat.controller.js`
 **Linee**: 152-173, 207-216, 287-297, 370-391, 433-450, 781-796, 1000-1014, 1057-1078
 **Severity**: 🟠 HIGH - **Messaggi persi con operazioni simultanee**
@@ -446,8 +447,9 @@ window.addEventListener('beforeunload', () => {
 
 ---
 
-### BUG #8: ChatWindow - Memory Leak con setTimeout
+### ✅ BUG #8: ChatWindow - Memory Leak con setTimeout [RISOLTO - 29/10/2025]
 
+**Status**: ✅ FIXED (commit 8345ade)
 **File**: `frontend-dashboard/src/components/ChatWindow.jsx`
 **Linee**: 126
 **Severity**: 🟡 MEDIUM - **setTimeout senza cleanup**
