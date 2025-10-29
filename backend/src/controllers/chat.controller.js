@@ -347,34 +347,29 @@ export const requestOperator = async (req, res) => {
     // Assign to least busy operator
     const assignedOperator = availableOperators[0];
 
-    // Update session
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'WITH_OPERATOR',
-        operatorId: assignedOperator.id,
-      },
-    });
-
-    // Add system message
-    const messages = parseMessages(session.messages);
-    messages.push({
+    // Create system message
+    const systemMessage = {
       id: Date.now().toString(),
       type: 'system',
       content: `${assignedOperator.name} si è unito alla chat`,
       timestamp: new Date().toISOString(),
+    };
+
+    // BUG #5 FIX: Add message and update status in single transaction
+    await addMessageWithLock(sessionId, systemMessage, {
+      status: 'WITH_OPERATOR',
+      operatorId: assignedOperator.id,
     });
 
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { messages: JSON.stringify(messages) },
-    });
+    // Get last user message for notification
+    const existingMessages = parseMessages(session.messages);
+    const lastUserMessage = existingMessages.filter(m => m.type === 'user').pop();
 
     // Notify operator via WebSocket
     io.to(`operator_${assignedOperator.id}`).emit('new_chat_request', {
       sessionId: sessionId,
       userName: session.userName,
-      lastMessage: messages[messages.length - 2]?.content || '',
+      lastMessage: lastUserMessage?.content || '',
     });
 
     // Notify dashboard
