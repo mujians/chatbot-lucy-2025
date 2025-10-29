@@ -123,7 +123,12 @@ const ChatWindow = ({ chat, onClose }) => {
         setUserIsTyping(data.isTyping);
         // Auto-hide after 3 seconds
         if (data.isTyping) {
-          setTimeout(() => setUserIsTyping(false), 3000);
+          // BUG #8 FIX: Clear existing timeout to prevent memory leak
+          if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+          }
+          // Save timeout reference for cleanup
+          typingTimeoutRef.current = setTimeout(() => setUserIsTyping(false), 3000);
         }
       }
     });
@@ -144,6 +149,11 @@ const ChatWindow = ({ chat, onClose }) => {
     setSocket(newSocket);
 
     return () => {
+      // BUG #8 FIX: Clear typing timeout on unmount
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
       const operatorId = localStorage.getItem('operator_id');
       if (operatorId) {
         newSocket.emit('operator_leave', { operatorId: operatorId });
