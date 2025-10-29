@@ -488,26 +488,18 @@ export const closeSession = async (req, res) => {
       });
     }
 
-    // Parse existing messages
-    const messages = parseMessages(session.messages);
-
-    // Add system closing message
+    // Create system closing message
     const closingMessage = {
       id: Date.now().toString(),
       type: 'system',
       content: 'La chat è stata chiusa dall\'operatore. Grazie per averci contattato!',
       timestamp: new Date().toISOString(),
     };
-    messages.push(closingMessage);
 
-    // Update session with closing message
-    const updatedSession = await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        status: 'CLOSED',
-        closedAt: new Date(),
-        messages: JSON.stringify(messages),
-      },
+    // BUG #5 FIX: Add message and update status in single transaction
+    const updatedSession = await addMessageWithLock(sessionId, closingMessage, {
+      status: 'CLOSED',
+      closedAt: new Date(),
     });
 
     // P0.4: Send chat transcript email if user provided email
