@@ -203,8 +203,9 @@ Rimuovere anche lì.
 
 ---
 
-### BUG #4: Dashboard Non Ascolta Evento `chat_closed`
+### ✅ BUG #4: Dashboard Non Ascolta Evento `chat_closed` [RISOLTO - 29/10/2025]
 
+**Status**: ✅ FIXED (commit 493c722)
 **File**: `frontend-dashboard/src/components/ChatWindow.jsx`
 **Linee**: 104-130
 **Severity**: 🟡 MEDIUM - **Dashboard non si aggiorna quando chat chiusa**
