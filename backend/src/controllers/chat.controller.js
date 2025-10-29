@@ -5,6 +5,22 @@ import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
 
 /**
+ * BUG #10 FIX: Safe JSON parsing with error handling
+ * Prevents crashes when messages field contains invalid JSON
+ */
+function parseMessages(messagesString) {
+  try {
+    const parsed = JSON.parse(messagesString || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.error('❌ Failed to parse messages JSON:', error);
+    console.error('Invalid messages string:', messagesString?.substring(0, 100));
+    // Return empty array as fallback - chat continues working
+    return [];
+  }
+}
+
+/**
  * Create new chat session
  * POST /api/chat/session
  */
@@ -149,7 +165,7 @@ export const sendUserMessage = async (req, res) => {
     }
 
     // Parse messages
-    const messages = JSON.parse(session.messages || '[]');
+    const messages = parseMessages(session.messages);
 
     // Add user message
     const userMessage = {
@@ -284,7 +300,7 @@ export const requestOperator = async (req, res) => {
     });
 
     // Add system message
-    const messages = JSON.parse(session.messages || '[]');
+    const messages = parseMessages(session.messages);
     messages.push({
       id: Date.now().toString(),
       type: 'system',
@@ -367,7 +383,7 @@ export const sendOperatorMessage = async (req, res) => {
     }
 
     // Parse messages
-    const messages = JSON.parse(session.messages || '[]');
+    const messages = parseMessages(session.messages);
 
     // Add operator message
     const operatorMessage = {
@@ -430,7 +446,7 @@ export const closeSession = async (req, res) => {
     }
 
     // Parse existing messages
-    const messages = JSON.parse(session.messages || '[]');
+    const messages = parseMessages(session.messages);
 
     // Add system closing message
     const closingMessage = {
@@ -778,7 +794,7 @@ export const transferSession = async (req, res) => {
     }
 
     // Parse messages and add system message
-    const messages = JSON.parse(session.messages || '[]');
+    const messages = parseMessages(session.messages);
     const transferMessage = {
       id: Date.now().toString(),
       type: 'system',
@@ -1194,8 +1210,8 @@ export const getUserHistory = async (req, res) => {
     // Parse messages for each session
     const sessionsWithParsedMessages = sessions.map((session) => ({
       ...session,
-      messages: JSON.parse(session.messages || '[]'),
-      messageCount: JSON.parse(session.messages || '[]').length,
+      messages: parseMessages(session.messages),
+      messageCount: parseMessages(session.messages).length,
     }));
 
     console.log(`✅ P0.2: User history loaded for ${user.email || userId} (${sessions.length} sessions)`);
@@ -1258,7 +1274,7 @@ export const uploadFile = async (req, res) => {
     );
 
     // Create message with file attachment
-    const messages = JSON.parse(session.messages || '[]');
+    const messages = parseMessages(session.messages);
     const isOperator = !!req.operator; // Check if authenticated (operator) or public (user)
 
     const newMessage = {
