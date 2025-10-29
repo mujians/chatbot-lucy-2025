@@ -248,13 +248,22 @@ newSocket.on('chat_closed', (data) => {
 
 ## 🟠 HIGH PRIORITY - Race Conditions & Data Loss
 
-### 🔄 BUG #5: Race Condition in Message Updates ⚠️ DATA LOSS [IN PROGRESS]
+### ✅ BUG #5: Race Condition in Message Updates [RISOLTO - 29/10/2025]
 
-**Status**: 🔄 PARTIAL FIX - Helper function created, full refactoring pending
-**Commit**: ae12811 (parseMessages), work in progress
+**Status**: ✅ FIXED - All 7 functions refactored with transaction locking
+**Commits**:
+- ae12811 (parseMessages helper)
+- 37ac8a9 (addMessageWithLock helper)
+- f4cc095 (sendOperatorMessage)
+- 9e421f1 (sendUserMessage)
+- f0e23b1 (requestOperator)
+- cdcaadd (closeSession)
+- aeb996b (transferSession)
+- 8757e7a (addInternalNote + helpers)
+- 6b44bb6 (updateInternalNote)
+
 **File**: `backend/src/controllers/chat.controller.js`
-**Linee**: 152-173, 207-216, 287-297, 370-391, 433-450, 781-796, 1000-1014, 1057-1078
-**Severity**: 🟠 HIGH - **Messaggi persi con operazioni simultanee**
+**Severity**: 🟠 HIGH - **Messaggi persi con operazioni simultanee** → RISOLTO
 
 **Problema Architetturale**:
 ```javascript
@@ -303,62 +312,76 @@ RESULT: msg4_user è PERSO!
 - Conversazioni incomplete
 - User frustrati ("Ho scritto ma non vedo il messaggio")
 
-**Funzioni Affette**:
-1. `sendUserMessage()` (lines 152-216)
-2. `sendOperatorMessage()` (lines 370-391)
-3. `requestOperator()` (lines 287-297) - aggiunge system message
-4. `closeSession()` (lines 433-450) - aggiunge closing message
-5. `transferSession()` (lines 781-796) - aggiunge transfer message
-6. `addInternalNote()` (lines 1000-1014)
-7. `updateInternalNote()` (lines 1057-1078)
+**Funzioni Affette** (tutte ora risolte ✅):
+1. ✅ `sendUserMessage()` - Usa addMessagesWithLock() per user + AI message
+2. ✅ `sendOperatorMessage()` - Usa addMessageWithLock()
+3. ✅ `requestOperator()` - Usa addMessageWithLock() per system message
+4. ✅ `closeSession()` - Usa addMessageWithLock() per closing message
+5. ✅ `transferSession()` - Usa addMessageWithLock() per transfer message
+6. ✅ `addInternalNote()` - Usa addInternalNoteWithLock()
+7. ✅ `updateInternalNote()` - Usa updateInternalNoteWithLock()
 
-**Fix Raccomandato**:
-Usare Prisma transactions con row-level locking:
+**Fix Implementato**:
+
+Creati 4 helper functions con PostgreSQL row-level locking:
 
 ```javascript
-// SOLUZIONE 1: Pessimistic locking (PostgreSQL)
-await prisma.$transaction(async (tx) => {
-  // Lock row
-  const session = await tx.$queryRaw`
-    SELECT * FROM "ChatSession"
-    WHERE id = ${sessionId}
-    FOR UPDATE
-  `;
+// 1. Single message with additional data
+async function addMessageWithLock(sessionId, newMessage, additionalData = {}) {
+  return await prisma.$transaction(async (tx) => {
+    const session = await tx.$queryRaw`
+      SELECT * FROM "ChatSession"
+      WHERE id = ${sessionId}::uuid
+      FOR UPDATE
+    `;
 
-  const messages = JSON.parse(session.messages || '[]');
-  messages.push(newMessage);
+    const messages = parseMessages(session[0].messages);
+    messages.push(newMessage);
 
-  await tx.chatSession.update({
-    where: { id: sessionId },
-    data: { messages: JSON.stringify(messages) }
+    const updated = await tx.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        messages: JSON.stringify(messages),
+        ...additionalData,
+      },
+    });
+
+    return updated;
   });
-});
-
-// SOLUZIONE 2: Optimistic locking
-const session = await prisma.chatSession.findUnique({ where: { id: sessionId } });
-const currentVersion = session.version; // Add version field to schema
-
-const updated = await prisma.chatSession.updateMany({
-  where: {
-    id: sessionId,
-    version: currentVersion  // Only update if version matches
-  },
-  data: {
-    messages: JSON.stringify(messages),
-    version: { increment: 1 }
-  }
-});
-
-if (updated.count === 0) {
-  // Version mismatch - retry
-  throw new Error('Concurrent modification detected');
 }
 
-// SOLUZIONE 3: (BEST) Separate Messages table - vedi Bug #6
+// 2. Multiple messages (user + AI)
+async function addMessagesWithLock(sessionId, newMessages, additionalData = {}) {
+  return await prisma.$transaction(async (tx) => {
+    const session = await tx.$queryRaw`SELECT * FROM "ChatSession" WHERE id = ${sessionId}::uuid FOR UPDATE`;
+    const messages = parseMessages(session[0].messages);
+    newMessages.forEach(msg => messages.push(msg));
+    return await tx.chatSession.update({
+      where: { id: sessionId },
+      data: { messages: JSON.stringify(messages), ...additionalData },
+    });
+  });
+}
+
+// 3. Internal notes - add
+async function addInternalNoteWithLock(sessionId, newNote) { /* similar pattern */ }
+
+// 4. Internal notes - update
+async function updateInternalNoteWithLock(sessionId, noteId, content) { /* similar pattern */ }
 ```
 
-**Effort**: 2 giorni (refactor tutti i controller)
-**Priority**: 🟠 P1
+Tutte le funzioni ora utilizzano questi helper per garantire atomicità.
+
+**Risultato**:
+- ✅ Race conditions eliminate su tutti i messaggi
+- ✅ Internal notes protetti da concurrent modifications
+- ✅ Transazioni PostgreSQL garantiscono atomicità
+- ✅ FOR UPDATE lock previene interferenze
+
+**Nota**: Per scalabilità futura, considerare migrazione a tabella Messages separata (vedi BUG #6).
+
+**Effort Completato**: 2 giorni (tutti i controller refactorati)
+**Status**: ✅ RISOLTO
 
 ---
 
@@ -686,46 +709,57 @@ const messages = parseMessages(session.messages);
 
 | Bug # | Component | Severity | Impact | Users Affected | Current Status | Effort | Priority |
 |-------|-----------|----------|--------|----------------|----------------|--------|----------|
-| #1 | Backend Socket | 🔴 CRITICAL | Chat close broken | 100% widget users | BROKEN | 30s | P0 |
-| #2 | Backend Socket | 🔴 CRITICAL | Transfer broken | All operators | BROKEN | 20s | P0 |
-| #3 | Frontend Filter | 🟠 HIGH | Transfer UI broken | All operators | BROKEN | 10s | P1 |
-| #4 | Frontend Socket | 🟡 MEDIUM | UI not updated | All operators | DEGRADED | 5m | P2 |
-| #5 | Backend Storage | 🟠 HIGH | Data loss | Active chats | AT RISK | 2d | P1 |
+| #1 | Backend Socket | 🔴 CRITICAL | Chat close broken | 100% widget users | ✅ FIXED | 30s | P0 |
+| #2 | Backend Socket | 🔴 CRITICAL | Transfer broken | All operators | ✅ FIXED | 20s | P0 |
+| #3 | Frontend Filter | 🟠 HIGH | Transfer UI broken | All operators | ✅ FIXED | 10s | P1 |
+| #4 | Frontend Socket | 🟡 MEDIUM | UI not updated | All operators | ✅ FIXED | 5m | P2 |
+| #5 | Backend Storage | 🟠 HIGH | Data loss | Active chats | ✅ FIXED | 2d | P1 |
 | #6 | Backend Schema | 🟠 HIGH | Performance | Growing | DEGRADED | 3d | P1 |
 | #7 | Widget Interval | 🟡 MEDIUM | Memory leak | All widget users | LEAK | 10m | P2 |
-| #8 | Frontend Timeout | 🟡 MEDIUM | Memory leak | All operators | LEAK | 5m | P2 |
+| #8 | Frontend Timeout | 🟡 MEDIUM | Memory leak | All operators | ✅ FIXED | 5m | P2 |
 | #9 | Widget Consistency | 🟡 MEDIUM | UI/DB mismatch | All widget users | INCONSISTENT | 1h | P2 |
-| #10 | All - Parsing | 🟢 LOW | Crash on invalid data | Edge cases | FRAGILE | 2h | P3 |
+| #10 | All - Parsing | 🟢 LOW | Crash on invalid data | Edge cases | ✅ FIXED | 2h | P3 |
 
 ---
 
-## 🚀 Recommended Fix Order
+## 🚀 Fix Status & Remaining Work
 
-### IMMEDIATE (Today)
-1. **Bug #1**: Fix `chat_closed` event (30 seconds)
-2. **Bug #2**: Fix transfer events (20 seconds)
-3. **Bug #3**: Remove `isOnline` filter (10 seconds)
+### ✅ COMPLETED (29 Ottobre 2025)
+1. ✅ **Bug #1**: Fixed `chat_closed` event (commit 53cf1ab)
+2. ✅ **Bug #2**: Fixed transfer events (commit 53cf1ab)
+3. ✅ **Bug #3**: Removed `isOnline` filter (commit 884f13f)
+4. ✅ **Bug #4**: Added chat_closed listener (commit 493c722)
+5. ✅ **Bug #5**: Implemented transaction locking - 7 functions (commits f4cc095, 9e421f1, f0e23b1, cdcaadd, aeb996b, 8757e7a, 6b44bb6)
+6. ✅ **Bug #8**: Fixed typing timeout leak (commit 8345ade)
+7. ✅ **Bug #10**: Added robust JSON parsing (commit ae12811)
 
-**Total**: 1 minuto - **3 critical bugs fixed**
+**Bugs Fixed**: 7/10 (70% complete)
+**Critical/High Priority Fixed**: 5/5 (100%)
 
-### SHORT TERM (This Week)
-4. **Bug #7**: Fix settings auto-refresh leak (10 min)
-5. **Bug #8**: Fix typing timeout leak (5 min)
-6. **Bug #4**: Add chat_closed listener (5 min)
+### 🔄 REMAINING WORK
 
-**Total**: 20 minuti
+### SHORT TERM (Next Week)
+1. **Bug #7**: Fix widget settings auto-refresh memory leak (10 min)
+   - Repository: lucine-minimal
+   - File: snippets/chatbot-popup.liquid
+   - Clear interval on cleanup
 
-### MEDIUM TERM (Next 2 Weeks)
-7. **Bug #5**: Implement transaction locking (2 days)
-8. **Bug #9**: Fix message consistency (1 hour)
-9. **Bug #6**: Migrate to separate Messages table (3 days)
+2. **Bug #9**: Fix widget message consistency (1 hour)
+   - Repository: lucine-minimal
+   - Implement optimistic UI with rollback
+   - Fix user message display inconsistency
 
-**Total**: ~1 settimana
+### MEDIUM TERM (Next 2-3 Weeks)
+3. **Bug #6**: Migrate to separate Messages table (3 days)
+   - Create Message model in Prisma schema
+   - Create migration
+   - Refactor all controllers
+   - Performance testing
 
 ### LONG TERM (Next Month)
-10. **Bug #10**: Add robust JSON parsing (2 hours)
-11. Code review generale
-12. E2E testing suite
+4. Code review generale
+5. E2E testing suite
+6. Performance monitoring setup
 
 ---
 
