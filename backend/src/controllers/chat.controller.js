@@ -57,6 +57,42 @@ async function addMessageWithLock(sessionId, newMessage, additionalData = {}) {
 }
 
 /**
+ * BUG #5 FIX: Add multiple messages with pessimistic locking
+ * Used when adding user message + AI response in same transaction
+ */
+async function addMessagesWithLock(sessionId, newMessages, additionalData = {}) {
+  return await prisma.$transaction(async (tx) => {
+    // Step 1: Lock the session row with FOR UPDATE
+    const session = await tx.$queryRaw`
+      SELECT * FROM "ChatSession"
+      WHERE id = ${sessionId}::uuid
+      FOR UPDATE
+    `;
+
+    if (!session || session.length === 0) {
+      throw new Error('Session not found');
+    }
+
+    // Step 2: Parse existing messages safely
+    const messages = parseMessages(session[0].messages);
+
+    // Step 3: Add all new messages
+    newMessages.forEach(msg => messages.push(msg));
+
+    // Step 4: Update with new messages array and any additional data
+    const updated = await tx.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        messages: JSON.stringify(messages),
+        ...additionalData,
+      },
+    });
+
+    return updated;
+  });
+}
+
+/**
  * Create new chat session
  * POST /api/chat/session
  */
@@ -200,32 +236,22 @@ export const sendUserMessage = async (req, res) => {
       });
     }
 
-    // Parse messages
-    const messages = parseMessages(session.messages);
-
-    // Add user message
+    // Create user message
     const userMessage = {
       id: Date.now().toString(),
       type: 'user',
       content: message,
       timestamp: new Date().toISOString(),
     };
-    messages.push(userMessage);
 
-    // Update session (P13: increment unread count if WITH_OPERATOR)
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        lastMessageAt: new Date(),
-        ...(session.status === 'WITH_OPERATOR' && session.operatorId
-          ? { unreadMessageCount: { increment: 1 } }
-          : {}),
-      },
-    });
-
-    // If status is WITH_OPERATOR, forward to operator via WebSocket
+    // If status is WITH_OPERATOR, add user message and forward to operator
     if (session.status === 'WITH_OPERATOR' && session.operatorId) {
+      // BUG #5 FIX: Use transaction-based helper to prevent race conditions
+      await addMessageWithLock(sessionId, userMessage, {
+        lastMessageAt: new Date(),
+        unreadMessageCount: { increment: 1 },
+      });
+
       io.to(`operator_${session.operatorId}`).emit('user_message', {
         sessionId: sessionId,
         userName: session.userName,
@@ -245,6 +271,7 @@ export const sendUserMessage = async (req, res) => {
     }
 
     // Otherwise, generate AI response
+    const messages = parseMessages(session.messages);
     const aiResult = await generateAIResponse(message, messages);
 
     const aiMessage = {
@@ -256,15 +283,9 @@ export const sendUserMessage = async (req, res) => {
       suggestOperator: aiResult.suggestOperator,
     };
 
-    messages.push(aiMessage);
-
-    // Update session with AI response
-    await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: {
-        messages: JSON.stringify(messages),
-        lastMessageAt: new Date(),
-      },
+    // BUG #5 FIX: Add both user and AI messages in single transaction
+    await addMessagesWithLock(sessionId, [userMessage, aiMessage], {
+      lastMessageAt: new Date(),
     });
 
     res.json({
