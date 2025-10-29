@@ -145,13 +145,31 @@ Improvement non bloccanti ma importanti per experience.
   16. ✅ Updated socket listeners to pass attachments
   17. ✅ CSS styling with hover effects and animations
 
+  **Dashboard Settings UI** (commit 3cadfee):
+  18. ✅ Cloudinary fields in Settings.tsx (lucine-chatbot repo)
+  19. ✅ Tab "Integrazioni" con sezione "Cloudinary (File Storage)"
+  20. ✅ 3 campi: Cloud Name, API Key, API Secret
+  21. ✅ Migration database `20251029_add_cloudinary_settings`
+  22. ✅ ENV variables fallback support
+
 - **Files**:
-  - `backend/src/services/upload.service.js` (new)
-  - `backend/src/controllers/chat.controller.js` (uploadFile function)
-  - `backend/src/routes/chat.routes.js` (upload route)
-  - `frontend-dashboard/src/components/ChatWindow.jsx`
-  - `snippets/chatbot-popup.liquid` (lucine-minimal)
-- **Commits**: c38c9ea (backend), b7e7096 (dashboard), 42da40f (widget)
+  - Backend: `backend/src/services/upload.service.js` (new)
+  - Backend: `backend/src/controllers/chat.controller.js` (uploadFile function)
+  - Backend: `backend/src/routes/chat.routes.js` (upload route)
+  - Backend: `backend/prisma/migrations/20251029_add_cloudinary_settings/`
+  - Dashboard: `frontend-dashboard/src/components/ChatWindow.jsx`
+  - Dashboard: `src/pages/Settings.tsx` (lines 30-33, 95-98, 459-486) ← Settings UI
+  - Widget: `snippets/chatbot-popup.liquid` (lucine-minimal)
+- **Commits**:
+  - c38c9ea (backend upload service)
+  - b7e7096 (dashboard file display)
+  - 42da40f (widget upload UI)
+  - 3cadfee (dashboard settings UI) ← **DEPLOYED LIVE 29/10 22:01**
+- **Deploy Status**: ✅ LIVE su tutti gli ambienti (backend, dashboard, widget)
+- **Configurazione**: Dashboard → Settings → Integrazioni → Cloudinary (File Storage)
+  - Cloud Name: dja2b7cyw
+  - API Key: 778117516175176
+  - API Secret: stZ374OjiJpjInPXakGtZ85rCm0
 - **Benefit**: Utenti e operatori possono condividere screenshot, documenti, allegati in chat
 
 ### ✅ P0.2 - User History/Profile (2-3d) [COMPLETATO - 29/10/2025]
@@ -428,17 +446,19 @@ Improvement non bloccanti ma importanti per experience.
 - **Benefit**: Widget si aggiorna automaticamente entro 5 min da modifica dashboard
 
 ### ✅ P2.2 - Settings UI Organization [COMPLETATO - 29/10/2025]
-- **Status**: ✅ **COMPLETATO** (commit 2436678)
+- **Status**: ✅ **COMPLETATO** (commit 2436678, 3cadfee)
 - **Issue**: Settings page ha troppi campi, UX confusa
 - **Impact**: 🟡 MEDIO - Difficile trovare impostazioni specifiche
 - **Fix Applicato**:
-  1. ✅ Creato sistema tabs con 5 categorie logiche
-  2. ✅ Tabs: Generale, Widget, AI, Notifiche, Integrazioni
+  1. ✅ Creato sistema tabs con 3 categorie logiche
+  2. ✅ **Tabs**: Generale (AI settings) | Integrazioni (SMTP, WhatsApp, Cloudinary) | Widget (colori, messaggi, layout)
   3. ✅ Spostato test connessioni in tab Integrazioni
   4. ✅ Widget tab mostra solo impostazioni widget-related
   5. ✅ Active tab highlighting e descrizioni
-- **File**: `frontend-dashboard/src/components/SettingsPanel.jsx`
-- **Commit**: 2436678
+- **Files**:
+  - `frontend-dashboard/src/components/SettingsPanel.jsx` (versione precedente)
+  - `src/pages/Settings.tsx` (versione finale deployed)
+- **Commits**: 2436678, 3cadfee
 - **Benefit**: UI molto più pulita, navigazione intuitiva, mobile-friendly
 
 ### ✅ P2.3 - Test Connection Buttons [COMPLETATO - 29/10/2025]
@@ -733,9 +753,9 @@ Completati **4 miglioramenti P2** per ottimizzare user experience:
 - Version tracking con localStorage
 - Modifiche dashboard riflesse nel widget automaticamente
 
-**Dashboard** (commits: 2436678, c150daf):
-- **P2.2**: Settings UI organizzata in 5 tabs logiche
-  - Generale, Widget, AI, Notifiche, Integrazioni
+**Dashboard** (commits: 2436678, c150daf, 3cadfee):
+- **P2.2**: Settings UI organizzata in 3 tabs logiche
+  - Generale (AI settings) | Integrazioni (SMTP, WhatsApp, Cloudinary) | Widget (colori, messaggi, layout)
   - UI molto più pulita e intuitiva
 - **P2.4**: Bulk actions per chat management
   - Checkbox selection multipla
