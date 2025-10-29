@@ -959,6 +959,49 @@ const messages = parseMessages(session.messages);
 **Bugs Fixed**: 10/10 (100% complete) 🎉
 **Critical/High Priority Fixed**: 6/6 (100%) ✅
 
+### ✅ PRODUCTION DEPLOYMENT FIXES (29 Ottobre 2025 - Sessione 2)
+
+**After BUG #6 deployment, additional critical issues were discovered and fixed**:
+
+11. ✅ **PostgreSQL UUID Cast Error** (commit e3bd694)
+   - **Issue**: Query failed with "operator does not exist: text = uuid"
+   - **Cause**: Prisma parameter binding doesn't support `::uuid` cast on parameters
+   - **Fix**: Changed `WHERE id = ${sessionId}::uuid` to `WHERE id::text = ${sessionId}`
+   - **Impact**: Restored all chat operations in production
+   - **Files**: `backend/src/controllers/chat.controller.js` (lines 14-17, 63-66)
+
+12. ✅ **Widget Duplicate Operator Messages** (commit fe7516a)
+   - **Issue**: Three conflicting messages when operator joins chat
+   - **Messages**:
+     1. "⏳ Ti abbiamo messo in coda..."
+     2. "✅ Admin Lucine si è connesso alla chat!"
+     3. Backend SYSTEM message "si è unito alla chat"
+   - **Fix**: Removed duplicate widget messages, kept only backend SYSTEM message
+   - **Files**: `lucine-minimal/snippets/chatbot-popup.liquid` (lines 1425-1429, 1994-1998)
+
+13. ✅ **P0-1: Dashboard Not Receiving User Messages** (commit 140db7e)
+   - **Issue**: ChatWindow didn't update when users sent messages
+   - **Cause**: Backend only emitted to `operator_${id}` room, not `chat_${sessionId}`
+   - **Fix**: Added emit to chat room for real-time dashboard updates
+   - **Files**: `backend/src/controllers/chat.controller.js` (lines 348-361)
+
+14. ✅ **P0-3: Chat in Dashboard Appears Empty** (commit 140db7e)
+   - **Issue**: Opening a chat showed no message history
+   - **Cause**: `getSessions()` didn't include messagesNew relation from Message table
+   - **Fix**: Added messagesNew include and conversion to legacy format for backward compatibility
+   - **Files**: `backend/src/controllers/chat.controller.js` (lines 736-797)
+
+15. ✅ **ES Modules Import Syntax** (commit 869e3c4)
+   - **Issue**: Data migration script used CommonJS `require()` in ES modules project
+   - **Fix**: Changed to `import` statement
+   - **Files**: `backend/scripts/migrate-messages-to-table.js`
+
+**Production Deployment Results**:
+- ✅ Data migration: 183 messages migrated successfully from 12 sessions (0 errors)
+- ✅ All P0-CRITICAL issues resolved
+- ✅ Real-time dashboard updates working
+- ✅ Widget message flow clean and consistent
+
 ### 🔄 REMAINING WORK
 
 ### DEPLOYMENT STEPS (Before Production)
