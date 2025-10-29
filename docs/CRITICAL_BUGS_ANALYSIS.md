@@ -395,11 +395,12 @@ Tutte le funzioni ora utilizzano questi helper per garantire atomicità.
 
 ## 🟡 MEDIUM PRIORITY - Logic Bugs
 
-### BUG #7: Widget Auto-Refresh Settings - Memory Leak
+### ✅ BUG #7: Widget Auto-Refresh Settings - Memory Leak [RISOLTO - 29/10/2025]
 
+**Status**: ✅ FIXED (commit 3d7cba2 - lucine-minimal repo)
 **File**: `/Users/brnobtt/Desktop/lucine-minimal/snippets/chatbot-popup.liquid`
-**Linee**: 842-847
-**Severity**: 🟡 MEDIUM - **Memory leak su widget persistente**
+**Linee**: 842-847 (now fixed)
+**Severity**: 🟡 MEDIUM - **Memory leak su widget persistente** → RISOLTO
 
 **Codice Problematico**:
 ```javascript
@@ -441,33 +442,42 @@ startSettingsAutoRefresh();  // ❌ MAI cleanup!
 - Performance degradation browser
 - Battery drain mobile
 
-**Fix**:
+**Fix Implementato**:
 ```javascript
-// Store interval ID globally
+// Line 800: Store interval ID globally
 let settingsRefreshInterval = null;
 
+// Lines 845-856: Modified function
 function startSettingsAutoRefresh() {
   // Clear existing interval if any
   if (settingsRefreshInterval) {
     clearInterval(settingsRefreshInterval);
   }
 
+  // Store interval reference
   settingsRefreshInterval = setInterval(() => {
     console.log('🔄 Auto-refreshing widget settings...');
     loadWidgetSettings(true);
   }, 5 * 60 * 1000);
 }
 
-// Add cleanup on page unload
+// Lines 2025-2030: Add cleanup on page unload
 window.addEventListener('beforeunload', () => {
   if (settingsRefreshInterval) {
     clearInterval(settingsRefreshInterval);
+    console.log('🧹 Cleaned up settings refresh interval');
   }
 });
 ```
 
-**Effort**: 10 minuti
-**Priority**: 🟡 P2
+**Risultato**:
+- ✅ Memory leak eliminato
+- ✅ Solo un interval attivo alla volta
+- ✅ Cleanup automatico su page unload
+- ✅ No more API spam
+
+**Effort Completato**: 10 minuti
+**Status**: ✅ RISOLTO
 
 ---
 
@@ -547,11 +557,12 @@ return () => {
 
 ---
 
-### BUG #9: Widget - Doppia Gestione Messaggi (Inconsistenza)
+### ✅ BUG #9: Widget - Doppia Gestione Messaggi (Inconsistenza) [RISOLTO - 29/10/2025]
 
+**Status**: ✅ FIXED (commit 19a9d50 - lucine-minimal repo)
 **File**: Widget + Backend
-**Linee**: Widget 1423-1470, Backend 156-167
-**Severity**: 🟡 MEDIUM - **Messaggi duplicati o mancanti**
+**Linee**: Widget 1423-1470, Backend 156-167 (now fixed)
+**Severity**: 🟡 MEDIUM - **Messaggi duplicati o mancanti** → RISOLTO
 
 **Problema Logico**:
 ```javascript
@@ -611,40 +622,66 @@ fetch(...).catch(error => {
 // Sessione ripresa da DB → "Ciao" message MANCANTE
 ```
 
-**Fix Raccomandato**:
-```javascript
-// APPROCCIO 1: Optimistic UI con rollback
-const tempId = Date.now().toString();
-addMessage(message, 'user', null, null, tempId);  // Temporary ID
+**Fix Implementato** (Optimistic UI con rollback):
 
-try {
-  const response = await fetch(...);
-  // Success: mark as confirmed
-  confirmMessage(tempId, response.data.data.message.id);
-} catch (error) {
-  // Rollback: remove temp message
-  removeMessage(tempId);
-  addMessage('Errore invio. Riprova.', 'bot');
+```javascript
+// Line 1494: Modified addMessage() to support temporary IDs
+function addMessage(text, sender, operatorName = null, attachment = null, tempId = null) {
+  const messageDiv = document.createElement('div');
+  messageDiv.className = `chat-message ${sender}`;
+
+  // Store temp ID as data attribute
+  if (tempId) {
+    messageDiv.setAttribute('data-temp-id', tempId);
+  }
+  // ... rest of function
 }
 
-// APPROCCIO 2: Wait for confirmation
-// Non mostrare userMessage finché POST non succeed
-showLoadingIndicator('Invio messaggio...');
+// Lines 1642-1649: New function to remove temporary messages
+function removeMessage(tempId) {
+  const messageDiv = messagesContainer.querySelector(`[data-temp-id="${tempId}"]`);
+  if (messageDiv) {
+    messageDiv.remove();
+    console.log(`🗑️ Removed temporary message: ${tempId}`);
+  }
+}
+
+// Modified sendMessage() flow:
+// Line 1341: Generate temp ID
+const tempId = !isInternalCommand ? `temp_${Date.now()}` : null;
+
+// Line 1345: Add message with temp ID (optimistic)
+if (!isInternalCommand) {
+  addMessage(message, 'user', null, null, tempId);
+}
+
 try {
+  // Send to backend
   const response = await fetch(...);
-  if (response.data.data.message) {
-    addMessage(response.data.data.message.content, 'user');  // ✅ From server
+  // Success: message stays with temp ID (becomes permanent)
+} catch (error) {
+  // Lines 1488-1491: Rollback on error
+  if (tempId) {
+    removeMessage(tempId);
   }
-  if (response.data.data.aiResponse) {
-    addMessage(response.data.data.aiResponse.content, 'bot');
-  }
-} finally {
-  hideLoadingIndicator();
+  addMessage('Mi dispiace, c\'è stato un problema. Riprova...', 'bot');
 }
 ```
 
-**Effort**: 1 ora
-**Priority**: 🟡 P2
+**Risultato**:
+- ✅ UI sempre consistente con DB
+- ✅ Messaggi falliti vengono rimossi (no ghost messages)
+- ✅ User feedback chiaro in caso di errore
+- ✅ Smooth UX su operazioni successful
+
+**Flow Implementato**:
+1. User invia messaggio → mostrato immediatamente con temp ID
+2. POST al backend
+3. Success → messaggio confermato, rimane visible
+4. Failure → messaggio temporaneo rimosso + errore mostrato
+
+**Effort Completato**: 1 ora
+**Status**: ✅ RISOLTO
 
 ---
 
@@ -715,9 +752,9 @@ const messages = parseMessages(session.messages);
 | #4 | Frontend Socket | 🟡 MEDIUM | UI not updated | All operators | ✅ FIXED | 5m | P2 |
 | #5 | Backend Storage | 🟠 HIGH | Data loss | Active chats | ✅ FIXED | 2d | P1 |
 | #6 | Backend Schema | 🟠 HIGH | Performance | Growing | DEGRADED | 3d | P1 |
-| #7 | Widget Interval | 🟡 MEDIUM | Memory leak | All widget users | LEAK | 10m | P2 |
+| #7 | Widget Interval | 🟡 MEDIUM | Memory leak | All widget users | ✅ FIXED | 10m | P2 |
 | #8 | Frontend Timeout | 🟡 MEDIUM | Memory leak | All operators | ✅ FIXED | 5m | P2 |
-| #9 | Widget Consistency | 🟡 MEDIUM | UI/DB mismatch | All widget users | INCONSISTENT | 1h | P2 |
+| #9 | Widget Consistency | 🟡 MEDIUM | UI/DB mismatch | All widget users | ✅ FIXED | 1h | P2 |
 | #10 | All - Parsing | 🟢 LOW | Crash on invalid data | Edge cases | ✅ FIXED | 2h | P3 |
 
 ---
@@ -725,6 +762,8 @@ const messages = parseMessages(session.messages);
 ## 🚀 Fix Status & Remaining Work
 
 ### ✅ COMPLETED (29 Ottobre 2025)
+
+**Backend (chatbot-lucy-2025 repository)**:
 1. ✅ **Bug #1**: Fixed `chat_closed` event (commit 53cf1ab)
 2. ✅ **Bug #2**: Fixed transfer events (commit 53cf1ab)
 3. ✅ **Bug #3**: Removed `isOnline` filter (commit 884f13f)
@@ -733,33 +772,29 @@ const messages = parseMessages(session.messages);
 6. ✅ **Bug #8**: Fixed typing timeout leak (commit 8345ade)
 7. ✅ **Bug #10**: Added robust JSON parsing (commit ae12811)
 
-**Bugs Fixed**: 7/10 (70% complete)
+**Widget (lucine-minimal repository)**:
+8. ✅ **Bug #7**: Fixed settings auto-refresh memory leak (commit 3d7cba2)
+9. ✅ **Bug #9**: Fixed message consistency with optimistic UI rollback (commit 19a9d50)
+
+**Bugs Fixed**: 9/10 (90% complete)
 **Critical/High Priority Fixed**: 5/5 (100%)
 
 ### 🔄 REMAINING WORK
 
-### SHORT TERM (Next Week)
-1. **Bug #7**: Fix widget settings auto-refresh memory leak (10 min)
-   - Repository: lucine-minimal
-   - File: snippets/chatbot-popup.liquid
-   - Clear interval on cleanup
-
-2. **Bug #9**: Fix widget message consistency (1 hour)
-   - Repository: lucine-minimal
-   - Implement optimistic UI with rollback
-   - Fix user message display inconsistency
-
 ### MEDIUM TERM (Next 2-3 Weeks)
-3. **Bug #6**: Migrate to separate Messages table (3 days)
+1. **Bug #6**: Migrate to separate Messages table (3 days)
+   - Repository: chatbot-lucy-2025
    - Create Message model in Prisma schema
    - Create migration
    - Refactor all controllers
    - Performance testing
+   - ARCHITECTURAL CHANGE
 
 ### LONG TERM (Next Month)
-4. Code review generale
-5. E2E testing suite
-6. Performance monitoring setup
+2. Code review generale
+3. E2E testing suite per validare tutti i fix
+4. Performance monitoring setup
+5. Load testing con concurrent users
 
 ---
 
