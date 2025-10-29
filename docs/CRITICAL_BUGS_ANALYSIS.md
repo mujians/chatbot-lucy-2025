@@ -142,8 +142,9 @@ io.to(`operator_${toOperatorId}`).emit('chat_transferred_to_you', {  // ✅ FIX
 
 ---
 
-### BUG #3: Frontend Filtra Operatori con Campo Deprecato
+### ✅ BUG #3: Frontend Filtra Operatori con Campo Deprecato [RISOLTO - 29/10/2025]
 
+**Status**: ✅ FIXED (commit 884f13f)
 **File**: `frontend-dashboard/src/components/ChatWindow.jsx`
 **Linee**: 210-211
 **Severity**: 🟠 HIGH - **Transfer chat mostra "Nessun operatore disponibile" sempre**
