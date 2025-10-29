@@ -626,8 +626,9 @@ try {
 
 ## 🟢 LOW PRIORITY - Code Smells
 
-### BUG #10: Chat.messages Parsing Fragile
+### ✅ BUG #10: Chat.messages Parsing Fragile [RISOLTO - 29/10/2025]
 
+**Status**: ✅ FIXED (commit ae12811)
 **File**: Multiple (backend controllers, frontend components, widget)
 **Severity**: 🟢 LOW - **Error handling mancante**
 
