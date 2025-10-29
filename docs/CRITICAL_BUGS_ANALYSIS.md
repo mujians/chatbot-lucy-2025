@@ -248,9 +248,10 @@ newSocket.on('chat_closed', (data) => {
 
 ## 🟠 HIGH PRIORITY - Race Conditions & Data Loss
 
-### ⏳ BUG #5: Race Condition in Message Updates ⚠️ DATA LOSS [POSTPONED]
+### 🔄 BUG #5: Race Condition in Message Updates ⚠️ DATA LOSS [IN PROGRESS]
 
-**Status**: ⏳ TODO - Fix complesso, richiede refactoring 7 funzioni
+**Status**: 🔄 PARTIAL FIX - Helper function created, full refactoring pending
+**Commit**: ae12811 (parseMessages), work in progress
 **File**: `backend/src/controllers/chat.controller.js`
 **Linee**: 152-173, 207-216, 287-297, 370-391, 433-450, 781-796, 1000-1014, 1057-1078
 **Severity**: 🟠 HIGH - **Messaggi persi con operazioni simultanee**

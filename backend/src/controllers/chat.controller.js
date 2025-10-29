@@ -21,6 +21,39 @@ function parseMessages(messagesString) {
 }
 
 /**
+ * BUG #5 FIX: Add message with pessimistic locking to prevent race conditions
+ * Uses PostgreSQL FOR UPDATE to lock row during read-modify-write
+ */
+async function addMessageWithLock(sessionId, newMessage) {
+  return await prisma.$transaction(async (tx) => {
+    // Step 1: Lock the session row with FOR UPDATE
+    const session = await tx.$queryRaw`
+      SELECT * FROM "ChatSession"
+      WHERE id = ${sessionId}::uuid
+      FOR UPDATE
+    `;
+
+    if (!session || session.length === 0) {
+      throw new Error('Session not found');
+    }
+
+    // Step 2: Parse existing messages safely
+    const messages = parseMessages(session[0].messages);
+
+    // Step 3: Add new message
+    messages.push(newMessage);
+
+    // Step 4: Update with new messages array
+    const updated = await tx.chatSession.update({
+      where: { id: sessionId },
+      data: { messages: JSON.stringify(messages) },
+    });
+
+    return updated;
+  });
+}
+
+/**
  * Create new chat session
  * POST /api/chat/session
  */
