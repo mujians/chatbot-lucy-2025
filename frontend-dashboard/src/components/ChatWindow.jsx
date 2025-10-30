@@ -161,6 +161,48 @@ const ChatWindow = ({ chat, onClose }) => {
       }
     });
 
+    // Listen for user confirmed presence
+    newSocket.on('user_confirmed_presence', (data) => {
+      console.log('✅ User confirmed presence:', data);
+      if (data.sessionId === chat.id) {
+        const systemMessage = {
+          id: `presence_${Date.now()}`,
+          type: 'system',
+          content: data.message || '✅ L\'utente ha confermato la sua presenza',
+          timestamp: data.timestamp || new Date().toISOString()
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+      }
+    });
+
+    // Listen for user switched to AI
+    newSocket.on('user_switched_to_ai', (data) => {
+      console.log('🤖 User switched to AI:', data);
+      if (data.sessionId === chat.id) {
+        const systemMessage = {
+          id: `ai_switch_${Date.now()}`,
+          type: 'system',
+          content: data.message || '🤖 L\'utente è tornato all\'assistente AI',
+          timestamp: data.timestamp || new Date().toISOString()
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+      }
+    });
+
+    // Listen for user inactive (final warning)
+    newSocket.on('user_inactive_final', (data) => {
+      console.log('⚠️ User inactive:', data);
+      if (data.sessionId === chat.id) {
+        const systemMessage = {
+          id: `inactive_${Date.now()}`,
+          type: 'system',
+          content: data.message || '⚠️ Utente inattivo da 5 minuti',
+          timestamp: new Date().toISOString()
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {

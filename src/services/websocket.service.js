@@ -82,6 +82,39 @@ export function setupWebSocketHandlers(io) {
       console.log(`🔄 User ${userName} resumed chat session ${sessionId}`);
     });
 
+    // User confirmed presence - notify operator
+    socket.on('user_confirmed_presence', (data) => {
+      const { sessionId, timestamp } = data;
+      socket.to(`chat_${sessionId}`).emit('user_confirmed_presence', {
+        sessionId,
+        timestamp,
+        message: '✅ L\'utente ha confermato la sua presenza'
+      });
+      console.log(`✅ User confirmed presence in session ${sessionId}`);
+    });
+
+    // User switched to AI - notify operator
+    socket.on('user_switched_to_ai', (data) => {
+      const { sessionId, timestamp } = data;
+      socket.to(`chat_${sessionId}`).emit('user_switched_to_ai', {
+        sessionId,
+        timestamp,
+        message: '🤖 L\'utente è tornato all\'assistente AI'
+      });
+      console.log(`🤖 User switched to AI in session ${sessionId}`);
+    });
+
+    // User inactive (final warning) - notify operator
+    socket.on('user_inactive_final', (data) => {
+      const { sessionId, inactiveTime, message } = data;
+      socket.to(`chat_${sessionId}`).emit('user_inactive_final', {
+        sessionId,
+        inactiveTime,
+        message: message || '⚠️ Utente inattivo da 5 minuti'
+      });
+      console.log(`⚠️ User inactive (${inactiveTime}s) in session ${sessionId}`);
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);
