@@ -212,6 +212,20 @@ export const chatApi = {
 
   transferSession: (id: string, data: { toOperatorId: string; reason?: string }) =>
     api.post(`/chat/sessions/${id}/transfer`, data).then(res => res.data),
+
+  // Internal Notes
+  addInternalNote: (sessionId: string, content: string) =>
+    api.post(`/chat/sessions/${sessionId}/notes`, { content }).then(res => res.data),
+
+  updateInternalNote: (sessionId: string, noteId: string, content: string) =>
+    api.put(`/chat/sessions/${sessionId}/notes/${noteId}`, { content }).then(res => res.data),
+
+  deleteInternalNote: (sessionId: string, noteId: string) =>
+    api.delete(`/chat/sessions/${sessionId}/notes/${noteId}`).then(res => res.data),
+
+  // User History
+  getUserHistory: (userId: string) =>
+    api.get(`/chat/users/${userId}/history`).then(res => res.data),
 };
 
 // ============================================

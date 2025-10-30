@@ -80,8 +80,8 @@ export default function Index() {
         setUnreadCount(prev => prev + 1);
         notificationService.updateBadgeCount(unreadCount + 1);
       } else {
-        // Solo suono se è la chat selezionata
-        notificationService.playSound();
+        // P2.8: Solo suono se è la chat selezionata (rispetta preferenze)
+        notificationService.playSound('chatMessage');
       }
     });
 

@@ -18,6 +18,15 @@ export interface ChatMessage {
   suggestOperator?: boolean;
 }
 
+export interface InternalNote {
+  id: string;
+  content: string;
+  operatorId: string;
+  operatorName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ChatSession {
   id: string;
   userName: string | null;  // Backend has userName, not userId
@@ -47,6 +56,8 @@ export interface ChatSession {
   lastMessageAt: string;
   closedAt?: string;
   lastMessage?: ChatMessage;  // Computed field for UI
+  internalNotes?: InternalNote[];  // Internal notes for operators
+  userId?: string;  // User ID for history lookup
 }
 
 export interface Operator {

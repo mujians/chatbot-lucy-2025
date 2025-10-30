@@ -11,8 +11,14 @@ const SettingsPanel = () => {
   const [testResults, setTestResults] = useState({});
   const [activeTab, setActiveTab] = useState('general'); // P2.2: Tab state
 
+  // P2.8: Notification preferences state
+  const [operatorPreferences, setOperatorPreferences] = useState(null);
+  const [savingPreferences, setSavingPreferences] = useState(false);
+  const [preferencesError, setPreferencesError] = useState(null);
+
   useEffect(() => {
     fetchSettings();
+    fetchOperatorPreferences();
   }, []);
 
   const fetchSettings = async () => {
@@ -24,6 +30,90 @@ const SettingsPanel = () => {
       console.error('Failed to fetch settings:', error);
       setLoading(false);
     }
+  };
+
+  // P2.8: Fetch operator notification preferences
+  const fetchOperatorPreferences = async () => {
+    try {
+      const operatorId = localStorage.getItem('operator_id');
+      if (!operatorId) {
+        console.warn('No operator ID found');
+        return;
+      }
+
+      const response = await axios.get(`/api/operators/${operatorId}`);
+      const preferences = response.data.data?.notificationPreferences;
+
+      // Default preferences if not set
+      const defaultPreferences = {
+        email: { newChat: true, newTicket: true, ticketResumed: true },
+        whatsapp: { newChat: false, newTicket: false, ticketResumed: true },
+        inApp: { newChat: true, newTicket: true, chatMessage: true, ticketResumed: true },
+        audio: { newChat: true, newTicket: true, chatMessage: false, ticketResumed: true },
+        quietHours: { start: '22:00', end: '08:00' }
+      };
+
+      setOperatorPreferences(
+        typeof preferences === 'string'
+          ? { ...defaultPreferences, ...JSON.parse(preferences) }
+          : { ...defaultPreferences, ...preferences }
+      );
+    } catch (error) {
+      console.error('Failed to fetch operator preferences:', error);
+      setPreferencesError('Impossibile caricare le preferenze');
+    }
+  };
+
+  // P2.8: Save operator notification preferences
+  const saveOperatorPreferences = async () => {
+    setSavingPreferences(true);
+    setPreferencesError(null);
+
+    try {
+      const operatorId = localStorage.getItem('operator_id');
+      if (!operatorId) {
+        throw new Error('Operator ID not found');
+      }
+
+      await axios.put(`/api/operators/${operatorId}`, {
+        notificationPreferences: operatorPreferences
+      });
+
+      // Reload preferences in notification service
+      // Note: This requires importing notificationService from src/services/notification.service
+      // For now we'll trigger a page refresh or let the service auto-reload on next notification
+      console.log('✅ Preferences saved, notification service will reload on next event');
+
+      alert('✅ Preferenze notifiche salvate con successo!');
+    } catch (error) {
+      console.error('Failed to save preferences:', error);
+      setPreferencesError(error.response?.data?.error?.message || 'Errore nel salvataggio');
+      alert('❌ Errore nel salvataggio delle preferenze');
+    } finally {
+      setSavingPreferences(false);
+    }
+  };
+
+  // P2.8: Update notification preference
+  const updatePreference = (category, key, value) => {
+    setOperatorPreferences(prev => ({
+      ...prev,
+      [category]: {
+        ...prev[category],
+        [key]: value
+      }
+    }));
+  };
+
+  // P2.8: Update quiet hours
+  const updateQuietHours = (field, value) => {
+    setOperatorPreferences(prev => ({
+      ...prev,
+      quietHours: {
+        ...prev.quietHours,
+        [field]: value
+      }
+    }));
   };
 
   const handleSave = async (setting) => {
@@ -169,6 +259,11 @@ const SettingsPanel = () => {
       return renderIntegrationsTab();
     }
 
+    // P2.8: Render notification preferences tab
+    if (activeTab === 'notification') {
+      return renderNotificationTab();
+    }
+
     // Get settings for current tab
     let tabSettings = [];
     if (activeTab === 'widget') {
@@ -250,6 +345,159 @@ const SettingsPanel = () => {
             )}
           </div>
         ))}
+      </div>
+    );
+  };
+
+  // P2.8: Render notification preferences tab
+  const renderNotificationTab = () => {
+    if (!operatorPreferences) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <div className="flex gap-1">
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
+            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
+          </div>
+        </div>
+      );
+    }
+
+    const renderToggle = (category, key, label) => (
+      <label className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer">
+        <span className="text-sm font-medium text-gray-700">{label}</span>
+        <input
+          type="checkbox"
+          checked={operatorPreferences[category][key]}
+          onChange={(e) => updatePreference(category, key, e.target.checked)}
+          className="w-5 h-5 text-christmas-green border-gray-300 rounded focus:ring-christmas-green"
+        />
+      </label>
+    );
+
+    return (
+      <div className="space-y-6">
+        {/* Error message */}
+        {preferencesError && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-800">❌ {preferencesError}</p>
+          </div>
+        )}
+
+        {/* Email Notifications */}
+        <div className="p-6 bg-white rounded-lg border border-gray-200">
+          <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <span className="text-2xl">📧</span>
+            Email
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Ricevi notifiche via email per questi eventi
+          </p>
+          <div className="space-y-2">
+            {renderToggle('email', 'newChat', 'Nuova chat')}
+            {renderToggle('email', 'newTicket', 'Nuovo ticket')}
+            {renderToggle('email', 'ticketResumed', 'Ticket ripreso')}
+          </div>
+        </div>
+
+        {/* WhatsApp Notifications */}
+        <div className="p-6 bg-white rounded-lg border border-gray-200">
+          <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <span className="text-2xl">💚</span>
+            WhatsApp
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Ricevi notifiche via WhatsApp per questi eventi
+          </p>
+          <div className="space-y-2">
+            {renderToggle('whatsapp', 'newChat', 'Nuova chat')}
+            {renderToggle('whatsapp', 'newTicket', 'Nuovo ticket')}
+            {renderToggle('whatsapp', 'ticketResumed', 'Ticket ripreso')}
+          </div>
+        </div>
+
+        {/* In-App Notifications */}
+        <div className="p-6 bg-white rounded-lg border border-gray-200">
+          <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <span className="text-2xl">🔔</span>
+            In-App (Browser)
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Ricevi notifiche browser per questi eventi
+          </p>
+          <div className="space-y-2">
+            {renderToggle('inApp', 'newChat', 'Nuova chat')}
+            {renderToggle('inApp', 'newTicket', 'Nuovo ticket')}
+            {renderToggle('inApp', 'chatMessage', 'Messaggio in chat')}
+            {renderToggle('inApp', 'ticketResumed', 'Ticket ripreso')}
+          </div>
+        </div>
+
+        {/* Audio Notifications */}
+        <div className="p-6 bg-white rounded-lg border border-gray-200">
+          <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <span className="text-2xl">🔊</span>
+            Audio
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Riproduci suono per questi eventi
+          </p>
+          <div className="space-y-2">
+            {renderToggle('audio', 'newChat', 'Nuova chat')}
+            {renderToggle('audio', 'newTicket', 'Nuovo ticket')}
+            {renderToggle('audio', 'chatMessage', 'Messaggio in chat')}
+            {renderToggle('audio', 'ticketResumed', 'Ticket ripreso')}
+          </div>
+        </div>
+
+        {/* Quiet Hours */}
+        <div className="p-6 bg-white rounded-lg border border-gray-200">
+          <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+            <span className="text-2xl">🌙</span>
+            Orari di Silenzio
+          </h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Disabilita notifiche audio e push in questi orari
+          </p>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Inizio
+              </label>
+              <input
+                type="time"
+                value={operatorPreferences.quietHours.start}
+                onChange={(e) => updateQuietHours('start', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-christmas-green"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Fine
+              </label>
+              <input
+                type="time"
+                value={operatorPreferences.quietHours.end}
+                onChange={(e) => updateQuietHours('end', e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-christmas-green"
+              />
+            </div>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Durante questi orari, riceverai solo email e WhatsApp (se abilitati)
+          </p>
+        </div>
+
+        {/* Save Button */}
+        <div className="flex justify-end">
+          <button
+            onClick={saveOperatorPreferences}
+            disabled={savingPreferences}
+            className="px-6 py-3 bg-christmas-green text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          >
+            {savingPreferences ? 'Salvataggio...' : '💾 Salva Preferenze'}
+          </button>
+        </div>
       </div>
     );
   };

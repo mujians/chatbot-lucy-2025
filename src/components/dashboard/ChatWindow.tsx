@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, X, Archive, Flag, XCircle, Download } from 'lucide-react';
+import { Send, X, Archive, Flag, XCircle, Download, User } from 'lucide-react';
 import type { ChatSession, ChatMessage, Operator } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -24,6 +24,8 @@ import { it } from 'date-fns/locale';
 import { chatApi, operatorsApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { QuickReplyPicker } from './QuickReplyPicker';
+import { InternalNotesPanel } from './InternalNotesPanel';
+import { UserHistoryModal } from './UserHistoryModal';
 import { exportChatsToCSV, exportChatsToJSON } from '@/lib/export';
 
 interface ChatWindowProps {
@@ -48,6 +50,7 @@ export function ChatWindow({
   const [message, setMessage] = useState('');
   const [showTransferDialog, setShowTransferDialog] = useState(false);
   const [showFlagDialog, setShowFlagDialog] = useState(false);
+  const [showUserHistory, setShowUserHistory] = useState(false);
   const [operators, setOperators] = useState<Operator[]>([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState('');
   const [transferReason, setTransferReason] = useState('');
@@ -56,6 +59,7 @@ export function ChatWindow({
   const [actionLoading, setActionLoading] = useState(false);
   const [showQuickReply, setShowQuickReply] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState('');
+  const [internalNotes, setInternalNotes] = useState<any[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { operator: currentOperator } = useAuth();
 
@@ -63,7 +67,22 @@ export function ChatWindow({
   useEffect(() => {
     setMessage('');
     setFlagReason('');
+    setInternalNotes([]);
+    if (selectedChat?.id) {
+      loadInternalNotes();
+    }
   }, [selectedChat?.id]);
+
+  const loadInternalNotes = async () => {
+    if (!selectedChat?.id) return;
+    try {
+      const response = await chatApi.getSession(selectedChat.id);
+      const session = response.data || response;
+      setInternalNotes(session.internalNotes || []);
+    } catch (error) {
+      console.error('Failed to load internal notes:', error);
+    }
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -216,7 +235,9 @@ export function ChatWindow({
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-background">
+    <div className="flex-1 flex bg-background">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
       <div className="h-16 border-b bg-card px-6 flex items-center justify-between">
         <div>
           <h2 className="font-semibold">
@@ -249,6 +270,19 @@ export function ChatWindow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* User History button */}
+          {selectedChat.userId && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowUserHistory(true)}
+              title="Vedi storico conversazioni utente"
+            >
+              <User className="h-4 w-4 mr-2" />
+              Storico
+            </Button>
+          )}
 
           {selectedChat.status !== 'CLOSED' && (
             <>
@@ -359,6 +393,17 @@ export function ChatWindow({
           </Button>
         </div>
       </div>
+      </div>
+      {/* End Main Chat Area */}
+
+      {/* Internal Notes Sidebar */}
+      <div className="w-80 border-l">
+        <InternalNotesPanel
+          sessionId={selectedChat.id}
+          notes={internalNotes}
+          onNotesChange={loadInternalNotes}
+        />
+      </div>
 
       {/* Transfer Dialog */}
       <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
@@ -458,6 +503,14 @@ export function ChatWindow({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* User History Modal */}
+      <UserHistoryModal
+        userId={selectedChat.userId || ''}
+        userName={selectedChat.userName || 'Utente'}
+        open={showUserHistory}
+        onOpenChange={setShowUserHistory}
+      />
     </div>
   );
 }
