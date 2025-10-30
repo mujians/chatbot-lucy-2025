@@ -349,81 +349,253 @@ if (!ALLOWED_MIMETYPES.includes(file.mimetype)) {
 
 ## 🎨 WIDGET FIX (1 TOTAL)
 
-### **Fix #10: Session Persistence Validation**
+### **Fix #10: Smart Session Resume with User Choice**
 **File**: `lucine-minimal/snippets/chatbot-popup.liquid`
-**Commit**: 2bbe659
+**Commits**:
+- 2bbe659 (initial validation)
+- 6db559c (resume prompt feature)
 
 **Problem**: Widget restored sessionId from localStorage even for CLOSED sessions
-**Impact**: Users opening chat (even incognito) were immediately in WITH_OPERATOR mode
-**Root Cause**: No validation of restored session status
+**Impact**: Users opening chat (even incognito) were immediately in WITH_OPERATOR mode - confusing "ghost operator" state
+**Root Cause**: No validation of restored session status + no user control
 
-**Changes**:
+**Solution**: Intelligent session validation with resume prompt for active operator sessions
 
-#### 1. Added `validateRestoredSession()` function (lines 956-988)
+---
+
+#### **Implementation (3 phases)**
+
+**Phase 1: Session Validation** (Commit 2bbe659)
+Added validation to check session status before restoring
+
+**Phase 2: Resume Prompt UX** (Commit 6db559c) ⭐ NEW
+Enhanced UX with user choice for WITH_OPERATOR sessions
+
+---
+
+#### **1. Enhanced `validateRestoredSession()` function**
 ```javascript
 async function validateRestoredSession(storedSessionId) {
-  if (!storedSessionId) return null;
+  const response = await fetch(`${BACKEND_URL}/api/chat/session/${storedSessionId}`);
+  const session = response.data;
 
-  try {
-    // Call backend to check session status
-    const response = await fetch(`${BACKEND_URL}/api/chat/session/${storedSessionId}`);
-
-    if (!response.ok) {
-      clearSessionStorage();
-      return null;
-    }
-
-    const sessionData = await response.json();
-
-    // Check if session is closed
-    if (sessionData.status === 'CLOSED' || sessionData.status === 'TICKET_CREATED') {
-      console.log('🚫 Session is closed, clearing localStorage');
-      clearSessionStorage();
-      return null;
-    }
-
-    return storedSessionId;
-  } catch (error) {
+  // CLOSED/TICKET → Clear localStorage
+  if (session.status === 'CLOSED' || session.status === 'TICKET_CREATED') {
     clearSessionStorage();
     return null;
   }
+
+  // WITH_OPERATOR → Ask user if they want to resume
+  if (session.status === 'WITH_OPERATOR') {
+    return {
+      sessionId,
+      needsResume: true,
+      operatorName: session.operator?.name
+    };
+  }
+
+  // ACTIVE/WAITING → Restore normally
+  return { sessionId, needsResume: false };
 }
 ```
 
-#### 2. Auto-validation on page load (lines 1020-1031)
-```javascript
-// IIFE runs immediately
-(async function initializeSession() {
-  if (sessionId && !sessionValidated) {
-    sessionId = await validateRestoredSession(sessionId);
-    sessionValidated = true;
+---
 
-    if (!sessionId) {
-      console.log('💡 Starting fresh - no valid session to restore');
-    }
+#### **2. Smart initialization flow**
+```javascript
+(async function initializeSession() {
+  const result = await validateRestoredSession(sessionId);
+
+  if (!result) {
+    // Invalid → start fresh
+    sessionId = null;
+  } else if (result.needsResume) {
+    // WITH_OPERATOR → show prompt, don't auto-join
+    showResumePrompt(result.operatorName);
+    sessionId = null; // User chooses later
+  } else {
+    // ACTIVE → restore normally
+    sessionId = result.sessionId;
   }
 })();
 ```
 
-#### 3. Fixed `chat_closed` event handler bug (line 2093)
+---
+
+#### **3. Resume Prompt UI** ⭐ NEW
+```javascript
+function showResumePrompt(operatorName) {
+  // System message
+  addMessage(`Hai una chat in corso con ${operatorName}. Vuoi riprenderla?`, 'system');
+
+  // Action buttons
+  showSmartActions([
+    {
+      icon: '🔄',
+      text: 'Riprendi chat',
+      description: 'Continua la conversazione',
+      action: () => resumeExistingChat()
+    },
+    {
+      icon: '➕',
+      text: 'Nuova chat',
+      description: 'Inizia da zero',
+      action: () => startNewChat()
+    }
+  ]);
+
+  // Badge notification
+  updateBadge(1);
+}
+```
+
+**Visual Result**:
+```
+╔════════════════════════════════════════╗
+║ 💬 Hai una chat in corso con Admin    ║
+║    Lucine. Vuoi riprenderla?          ║
+║                                        ║
+║  ┌──────────────────────────────────┐ ║
+║  │ 🔄 Riprendi chat                 │ ║
+║  │ Continua la conversazione        │ ║
+║  └──────────────────────────────────┘ ║
+║                                        ║
+║  ┌──────────────────────────────────┐ ║
+║  │ ➕ Nuova chat                    │ ║
+║  │ Inizia da zero                   │ ║
+║  └──────────────────────────────────┘ ║
+╚════════════════════════════════════════╝
+```
+
+---
+
+#### **4. Resume existing chat** ⭐ NEW
+```javascript
+async function resumeExistingChat() {
+  // Fetch session from backend
+  const session = await fetch(`${BACKEND_URL}/api/chat/session/${sessionId}`);
+
+  // Load ALL previous messages
+  session.messagesNew.forEach(msg => {
+    addMessage(msg.content, msg.type, msg.operatorName);
+  });
+
+  // Set operator mode
+  isOperatorMode = true;
+  updateHeaderForOperatorMode();
+
+  // Join WebSocket room
+  socket.emit('join_chat', { sessionId });
+
+  addMessage('✅ Chat ripresa con successo!', 'system');
+}
+```
+
+**Result**: User sees all previous conversation and can continue where they left off
+
+---
+
+#### **5. Start new chat** ⭐ NEW
+```javascript
+function startNewChat() {
+  // Clear localStorage
+  clearSessionStorage();
+  sessionId = null;
+  pendingResumeSession = null;
+
+  // Clear UI
+  chatMessages.innerHTML = '';
+  displayedMessageIds.clear();
+  isOperatorMode = false;
+
+  // Reset header to AI mode
+  chatTitle.textContent = 'LUCY - ASSISTENTE VIRTUALE';
+
+  addMessage('💬 Nuova chat avviata. Come posso aiutarti?', 'bot');
+}
+```
+
+**Result**: Clean slate, fresh conversation
+
+---
+
+#### **6. Fixed `chat_closed` bug**
 ```javascript
 // BEFORE (WRONG):
 localStorage.removeItem('chatSessionId'); // ❌ Wrong key!
 
 // AFTER (FIXED):
-clearSessionStorage(); // ✅ Clears both keys
-sessionValidated = false; // Reset flag
+clearSessionStorage(); // ✅ Clears both SESSION_STORAGE_KEY and SESSION_EXPIRY_KEY
+sessionValidated = false; // Reset validation flag
 ```
 
-**Behavior Changes**:
-- **Old**: Restored any session from localStorage (even CLOSED ones)
-- **New**: Validates session on load, starts fresh if CLOSED
+---
 
-**Test Scenario**:
-1. Start chat with operator
-2. Operator closes chat
-3. Refresh page or open incognito
-4. ✅ Result: New chat starts from scratch (not WITH_OPERATOR)
+## **Behavior Matrix**
+
+| Session Status | Old Behavior | New Behavior |
+|----------------|--------------|--------------|
+| **CLOSED** | Auto-restored → errors | Auto-cleared → new chat |
+| **TICKET_CREATED** | Auto-restored → confusion | Auto-cleared → new chat |
+| **WITH_OPERATOR** | Auto-joined → ghost mode | **Prompt → user chooses** ⭐ |
+| **WAITING** | Auto-restored | Auto-restored (unchanged) |
+| **ACTIVE** | Auto-restored | Auto-restored (unchanged) |
+
+---
+
+## **UX Flow Comparison**
+
+**Before (confusing)**:
+```
+User: *reloads page with operator chat*
+Widget: *auto-joins WITH_OPERATOR session*
+User: "Wait... why am I already talking to an operator?"
+User: "Where are my previous messages?"
+User: "This is confusing..."
+```
+
+**After (clear)**:
+```
+User: *reloads page with operator chat*
+Widget: "Hai una chat in corso con Admin Lucine. Vuoi riprenderla?"
+User: *clicks "Riprendi chat"*
+Widget: *loads all previous messages*
+Widget: "✅ Chat ripresa con successo!"
+User: "Perfect! I can continue where I left off"
+```
+
+---
+
+## **Test Scenarios**
+
+**Scenario A: Resume existing chat**
+1. Start chat, request operator, operator joins
+2. Reload page
+3. ✅ See prompt with operator name
+4. Click "Riprendi chat"
+5. ✅ All previous messages loaded
+6. ✅ Can continue conversation
+
+**Scenario B: Start new chat**
+1. Start chat, request operator, operator joins
+2. Reload page
+3. ✅ See prompt
+4. Click "Nuova chat"
+5. ✅ Clean chat interface
+6. ✅ New session created
+
+**Scenario C: Closed session**
+1. Operator closes chat
+2. Reload page
+3. ✅ NO prompt shown
+4. ✅ Automatic new chat
+5. ✅ localStorage cleared
+
+**Scenario D: Incognito tab**
+1. Have active operator chat in normal tab
+2. Open incognito tab with same URL
+3. ✅ See resume prompt
+4. Choice is independent of normal tab
 
 ---
 
@@ -437,10 +609,11 @@ sessionValidated = false; // Reset flag
 | ff6dfde | Migration fix | 3 files | ✅ Deployed |
 | 2f817de | Prisma fix | 1 file | ✅ Deployed |
 
-### **Widget Commit**
+### **Widget Commits**
 | Commit | Fix | File Changed | Status |
 |--------|-----|--------------|--------|
-| 2bbe659 | #10 | 1 file | ✅ Deployed (auto-sync) |
+| 2bbe659 | #10 (validation) | 1 file | ✅ Deployed (auto-sync) |
+| 6db559c | #10 (resume prompt) | 1 file | ✅ Deployed (auto-sync) |
 
 ---
 
