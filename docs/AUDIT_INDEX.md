@@ -54,6 +54,41 @@ Breakdown by Category:
 
 ## 📁 REPORT FILES
 
+### 0. AUDIT_FIXES_DEPLOYED.md ✨ NEW
+**Pages**: ~15
+**Purpose**: Report completo dei fix implementati
+
+**Contenuti**:
+- 10 fix critici deployati (9 backend + 1 widget)
+- Code snippets prima/dopo per ogni fix
+- Deployment workflow (Render + Shopify auto-sync)
+- Impact analysis e system health score
+- Remaining issues e next steps
+
+**Chi lo legge**: TUTTI (essential reading!)
+**Tempo**: 30 min
+**Status**: ✅ Up to date (30 Ott 2025)
+
+---
+
+### 0b. DEPLOYMENT_WORKFLOW.md ✨ NEW
+**Pages**: ~8
+**Purpose**: Guida completa al deployment automatico
+
+**Contenuti**:
+- Backend auto-deploy (Render)
+- Widget auto-sync (Shopify GitHub integration)
+- Environment variables setup
+- Migration workflow
+- Troubleshooting guide
+- Rollback procedures
+
+**Chi lo legge**: Developer, DevOps
+**Tempo**: 20 min
+**Nota**: ⚠️ IMPORTANTE - Shopify syncs automatically on git push!
+
+---
+
 ### 1. AUDIT_EXECUTIVE_SUMMARY.md
 **Pages**: ~40
 **Purpose**: Executive overview di tutto l'audit
@@ -187,23 +222,31 @@ Breakdown by Category:
 
 ## 🚨 TOP 10 PRIORITY FIXES
 
-Dalla lettura di tutti i report, queste sono le TOP 10 issue da fixare:
+**Status aggiornato**: 30 Ottobre 2025
+**Completati**: 8/10 (80%)
 
-| # | Issue | File | Effort | Impact |
+| # | Issue | File | Effort | Status |
 |---|-------|------|--------|--------|
-| 1 | WebSocket auth bypass | websocket.service.js:11 | 2h | 🔴 Security |
-| 2 | Search broken for new messages | chat.controller.js:725 | 1h | 🔴 Feature |
-| 3 | Unlimited message loading | chat.controller.js:376 | 30m | 🔴 Performance |
-| 4 | deleteNote race condition | chat.controller.js:1330 | 30m | 🔴 Data loss |
-| 5 | ticket_resumed room typo | ticket.controller.js:383 | 5m | 🔴 Broken |
-| 6 | WhatsApp privacy leak | whatsapp.controller.js:72 | 30m | 🔴 Security |
-| 7 | closeSession idempotency | chat.controller.js:617 | 15m | 🟡 UX |
-| 8 | Missing foreign keys | schema.prisma | 2h | 🟡 Integrity |
-| 9 | Priority as String not Enum | schema.prisma:167 | 1h | 🟡 Validation |
-| 10 | No search index on content | schema.prisma | 30m | 🟡 Performance |
+| 1 | WebSocket auth bypass | websocket.service.js | 2h | ✅ FIXED #7 |
+| 2 | Search broken for new messages | chat.controller.js:767 | 1h | ✅ FIXED #4 |
+| 3 | Unlimited message loading | chat.controller.js:377 | 30m | ✅ FIXED #2 |
+| 4 | deleteNote race condition | chat.controller.js:186 | 30m | ✅ FIXED #3 |
+| 5 | ticket_resumed room typo | ticket.controller.js:383 | 5m | ✅ FIXED #1 |
+| 6 | WhatsApp privacy leak | whatsapp.controller.js:72 | 30m | ✅ FIXED #6 |
+| 7 | closeSession idempotency | chat.controller.js:677 | 15m | ✅ FIXED #5 |
+| 8 | Missing foreign keys | schema.prisma | 2h | ❌ TODO |
+| 9 | Priority as String not Enum | schema.prisma:175 | 1h | ✅ FIXED #8 |
+| 10 | No search index on content | schema.prisma | 30m | ❌ TODO |
 
+**BONUS FIX**:
+| 11 | Widget session persistence | chatbot-popup.liquid | 1h | ✅ FIXED #10 |
+| 12 | File upload MIME validation | chat.controller.js:1563 | 30m | ✅ FIXED #9 |
+
+**Total Fixed**: 10 issues (8 from Top 10 + 2 bonus)
 **Total Effort**: ~8 hours
-**Total Impact**: 🔴 CRITICAL issues eliminated
+**Remaining**: 2 issues (2.5h effort)
+
+**See**: `AUDIT_FIXES_DEPLOYED.md` for complete details
 
 ---
 
