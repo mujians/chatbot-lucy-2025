@@ -27,8 +27,28 @@ export function SocketProvider({ children }: { children: ReactNode }) {
     newSocket.on('connect', () => {
       console.log('✅ WebSocket connected');
       setConnected(true);
-      // Join dashboard room with operator ID
-      newSocket.emit('join_dashboard', operator.id);
+
+      // AUDIT FIX: Join operator room with JWT authentication
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        newSocket.emit('operator_join', {
+          operatorId: operator.id,
+          token: token,
+        });
+      }
+
+      // Join dashboard room
+      newSocket.emit('join_dashboard');
+    });
+
+    // AUDIT FIX: Handle WebSocket authentication events
+    newSocket.on('auth_success', (data) => {
+      console.log('✅ WebSocket authenticated:', data.message);
+    });
+
+    newSocket.on('auth_error', (data) => {
+      console.error('❌ WebSocket auth failed:', data.message);
+      // Could trigger logout or token refresh here
     });
 
     newSocket.on('disconnect', () => {

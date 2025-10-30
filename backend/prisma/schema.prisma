@@ -49,6 +49,13 @@ enum TicketPriority {
   HIGH
 }
 
+enum ChatPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
 enum ContactMethod {
   WHATSAPP
   EMAIL
@@ -164,7 +171,8 @@ model ChatSession {
   deletedAt               DateTime?  // Soft delete
 
   // P1.8: Priority and Tags
-  priority                String   @default("NORMAL")  // LOW, NORMAL, HIGH, URGENT
+  // AUDIT FIX: Changed from String to Enum for validation
+  priority                ChatPriority @default(NORMAL)
   tags                    Json     @default("[]")  // Array of string tags
 
   // P0.3: Internal Notes

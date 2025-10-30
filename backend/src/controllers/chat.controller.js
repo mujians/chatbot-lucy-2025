@@ -1560,6 +1560,37 @@ export const uploadFile = async (req, res) => {
       });
     }
 
+    // AUDIT FIX: Validate file MIME type (security)
+    const ALLOWED_MIMETYPES = [
+      // Images
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+      'image/svg+xml',
+      // Documents
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-powerpoint',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      // Text
+      'text/plain',
+      'text/csv',
+      // Archives
+      'application/zip',
+      'application/x-zip-compressed',
+    ];
+
+    if (!ALLOWED_MIMETYPES.includes(file.mimetype)) {
+      return res.status(400).json({
+        error: { message: `File type not allowed: ${file.mimetype}. Allowed types: images, PDFs, documents, text files.` },
+      });
+    }
+
     // Check session exists
     const session = await prisma.chatSession.findUnique({
       where: { id: sessionId },

@@ -3,15 +3,49 @@
  * Handles Socket.IO connections and events
  */
 
+import jwt from 'jsonwebtoken';
+import { config } from '../config/index.js';
+
 export function setupWebSocketHandlers(io) {
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 
-    // Operator authentication and room joining
-    socket.on('operator_join', (data) => {
-      const { operatorId } = data;
-      socket.join(`operator_${operatorId}`);
-      console.log(`👤 Operator ${operatorId} joined room`);
+    // AUDIT FIX: Operator authentication and room joining (with JWT verification)
+    socket.on('operator_join', async (data) => {
+      try {
+        const { operatorId, token } = data;
+
+        // Verify token is provided
+        if (!token) {
+          socket.emit('auth_error', { message: 'Authentication token required' });
+          console.log(`❌ Operator join failed: No token provided`);
+          return;
+        }
+
+        // Verify JWT token
+        const decoded = jwt.verify(token, config.jwtSecret);
+
+        // Verify operatorId matches token
+        if (decoded.operatorId !== operatorId) {
+          socket.emit('auth_error', { message: 'Unauthorized: Token mismatch' });
+          console.log(`❌ Operator join failed: Token mismatch for ${operatorId}`);
+          return;
+        }
+
+        // All checks passed - join room
+        socket.join(`operator_${operatorId}`);
+        socket.emit('auth_success', { message: 'Authenticated successfully' });
+        console.log(`👤 Operator ${operatorId} joined room (authenticated)`);
+      } catch (error) {
+        if (error.name === 'TokenExpiredError') {
+          socket.emit('auth_error', { message: 'Token expired' });
+        } else if (error.name === 'JsonWebTokenError') {
+          socket.emit('auth_error', { message: 'Invalid token' });
+        } else {
+          socket.emit('auth_error', { message: 'Authentication failed' });
+        }
+        console.log(`❌ Operator join failed: ${error.message}`);
+      }
     });
 
     // Operator leaves
