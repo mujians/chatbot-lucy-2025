@@ -184,6 +184,45 @@ async function updateInternalNoteWithLock(sessionId, noteId, updatedContent) {
 }
 
 /**
+ * AUDIT FIX: Delete internal note with pessimistic locking
+ * Prevents race conditions when deleting notes (matches add/update pattern)
+ */
+async function deleteInternalNoteWithLock(sessionId, noteId) {
+  return await prisma.$transaction(async (tx) => {
+    // Step 1: Lock the session row with FOR UPDATE
+    const session = await tx.$queryRaw`
+      SELECT * FROM "ChatSession"
+      WHERE id = ${sessionId}::uuid
+      FOR UPDATE
+    `;
+
+    if (!session || session.length === 0) {
+      throw new Error('Session not found');
+    }
+
+    // Step 2: Parse existing notes safely
+    const notes = JSON.parse(session[0].internalNotes || '[]');
+
+    // Step 3: Find and remove the note
+    const noteIndex = notes.findIndex(note => note.id === noteId);
+    if (noteIndex === -1) {
+      throw new Error('Note not found');
+    }
+
+    // Remove note from array
+    notes.splice(noteIndex, 1);
+
+    // Step 4: Update with modified notes array
+    const updated = await tx.chatSession.update({
+      where: { id: sessionId },
+      data: { internalNotes: JSON.stringify(notes) },
+    });
+
+    return updated;
+  });
+}
+
+/**
  * Create new chat session
  * POST /api/chat/session
  */
@@ -373,9 +412,11 @@ export const sendUserMessage = async (req, res) => {
 
     // Otherwise, generate AI response
     // BUG #6: Read messages from Message table instead of JSON
+    // AUDIT FIX: Limit to last 50 messages for AI context (performance optimization)
     const existingMessages = await prisma.message.findMany({
       where: { sessionId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
       select: {
         type: true,
         content: true,
@@ -383,6 +424,9 @@ export const sendUserMessage = async (req, res) => {
         aiSuggestOperator: true,
       },
     });
+
+    // Reverse to chronological order for AI service
+    existingMessages.reverse();
 
     // Convert to legacy format for AI service
     const messagesForAI = existingMessages.map(m => ({
@@ -629,6 +673,13 @@ export const closeSession = async (req, res) => {
       });
     }
 
+    // AUDIT FIX: Check if already closed (idempotency)
+    if (session.status === 'CLOSED') {
+      return res.status(400).json({
+        error: { message: 'Chat is already closed' },
+      });
+    }
+
     // BUG #6: Create system closing message in Message table with transaction
     const result = await createMessage(sessionId, {
       type: 'SYSTEM',
@@ -719,10 +770,15 @@ export const getSessions = async (req, res) => {
     }
 
     // Search in userName or messages
+    // AUDIT FIX: Search in Message table instead of old JSON field
     if (search) {
       where.OR = [
         { userName: { contains: search, mode: 'insensitive' } },
-        { messages: { string_contains: search } }, // Search in JSON
+        { messagesNew: {
+          some: {
+            content: { contains: search, mode: 'insensitive' }
+          }
+        }},
       ];
     }
 
@@ -1326,6 +1382,7 @@ export const updateInternalNote = async (req, res) => {
 /**
  * P0.3: Delete internal note
  * DELETE /api/chat/sessions/:sessionId/notes/:noteId
+ * AUDIT FIX: Now uses transaction lock to prevent race conditions
  */
 export const deleteInternalNote = async (req, res) => {
   try {
@@ -1341,28 +1398,25 @@ export const deleteInternalNote = async (req, res) => {
       });
     }
 
+    // Verify note exists and check permissions BEFORE transaction
     const notes = JSON.parse(session.internalNotes || '[]');
-    const noteIndex = notes.findIndex((n) => n.id === noteId);
+    const noteToDelete = notes.find((n) => n.id === noteId);
 
-    if (noteIndex === -1) {
+    if (!noteToDelete) {
       return res.status(404).json({
         error: { message: 'Note not found' },
       });
     }
 
     // Only allow operator to delete their own notes
-    if (notes[noteIndex].operatorId !== req.operator.id) {
+    if (noteToDelete.operatorId !== req.operator.id) {
       return res.status(403).json({
         error: { message: 'You can only delete your own notes' },
       });
     }
 
-    notes.splice(noteIndex, 1);
-
-    const updated = await prisma.chatSession.update({
-      where: { id: sessionId },
-      data: { internalNotes: JSON.stringify(notes) },
-    });
+    // AUDIT FIX: Use transaction-based helper to prevent race conditions
+    const updated = await deleteInternalNoteWithLock(sessionId, noteId);
 
     console.log(`✅ P0.3: Internal note ${noteId} deleted from chat ${sessionId}`);
 
@@ -1416,6 +1470,7 @@ export const getUserHistory = async (req, res) => {
         },
         messagesNew: {
           orderBy: { createdAt: 'asc' },
+          take: 100, // AUDIT FIX: Limit messages per session to prevent memory overflow
           select: {
             id: true,
             type: true,

@@ -68,8 +68,8 @@ export const handleIncomingMessage = async (req, res) => {
       },
     });
 
-    // Emit WebSocket event to connected operators
-    io.emit('whatsapp_message', {
+    // AUDIT FIX: Emit to specific chat room instead of global broadcast (privacy)
+    io.to(`chat_${session.id}`).emit('whatsapp_message', {
       sessionId: session.id,
       userName: session.userName,
       message: newMessage,
@@ -84,8 +84,8 @@ export const handleIncomingMessage = async (req, res) => {
         data: { status: 'WAITING' },
       });
 
-      // Emit event to find available operator
-      io.emit('new_chat', {
+      // AUDIT FIX: Emit to dashboard room instead of global broadcast
+      io.to('dashboard').emit('new_chat', {
         sessionId: session.id,
         userName: session.userName,
         channel: 'whatsapp',
@@ -222,8 +222,8 @@ export const sendMessage = async (req, res) => {
       },
     });
 
-    // Emit WebSocket event
-    io.emit('operator_message', {
+    // AUDIT FIX: Emit to specific chat room instead of global broadcast
+    io.to(`chat_${sessionId}`).emit('operator_message', {
       sessionId,
       message: newMessage,
     });

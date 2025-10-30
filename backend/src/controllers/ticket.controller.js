@@ -380,7 +380,7 @@ export const resumeTicket = async (req, res) => {
 
       // Notify operator
       if (ticket.operatorId) {
-        io.to(`operator:${ticket.operatorId}`).emit('ticket_resumed', {
+        io.to(`operator_${ticket.operatorId}`).emit('ticket_resumed', {
           ticketId: ticket.id,
           userName: ticket.userName,
         });
