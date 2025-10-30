@@ -1127,7 +1127,7 @@ export const transferSession = async (req, res) => {
 
 /**
  * Mark messages as read (P13)
- * POST /api/chat/session/:sessionId/mark-read
+ * POST /api/chat/sessions/:sessionId/mark-read
  */
 export const markMessagesAsRead = async (req, res) => {
   try {

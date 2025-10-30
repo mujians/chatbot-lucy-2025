@@ -38,16 +38,16 @@ router.post('/session/:sessionId/request-operator', requestOperator);
 
 // Protected routes (for operators)
 router.get('/sessions', authenticateToken, getSessions);
-router.post('/session/:sessionId/operator-message', authenticateToken, sendOperatorMessage);
-router.post('/session/:sessionId/close', authenticateToken, closeSession);
-router.post('/session/:sessionId/mark-read', authenticateToken, markMessagesAsRead);
+router.post('/sessions/:sessionId/operator-message', authenticateToken, sendOperatorMessage);
+router.post('/sessions/:sessionId/close', authenticateToken, closeSession);
+router.post('/sessions/:sessionId/mark-read', authenticateToken, markMessagesAsRead);
 router.delete('/sessions/:sessionId', authenticateToken, deleteSession);
 router.post('/sessions/:sessionId/archive', authenticateToken, archiveSession);
 router.post('/sessions/:sessionId/unarchive', authenticateToken, unarchiveSession);
 router.post('/sessions/:sessionId/flag', authenticateToken, flagSession);
 router.post('/sessions/:sessionId/unflag', authenticateToken, unflagSession);
 router.post('/sessions/:sessionId/transfer', authenticateToken, transferSession);
-router.post('/session/:sessionId/convert-to-ticket', authenticateToken, convertChatToTicket);
+router.post('/sessions/:sessionId/convert-to-ticket', authenticateToken, convertChatToTicket);
 
 // P1.8: Priority and Tags routes
 router.put('/sessions/:sessionId/priority', authenticateToken, updatePriority);
