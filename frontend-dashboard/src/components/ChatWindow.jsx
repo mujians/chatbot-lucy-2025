@@ -146,6 +146,21 @@ const ChatWindow = ({ chat, onClose }) => {
       }
     });
 
+    // Listen for user resumed chat notification
+    newSocket.on('user_resumed_chat', (data) => {
+      console.log('🔄 User resumed chat:', data);
+      if (data.sessionId === chat.id) {
+        // Add system message to chat
+        const systemMessage = {
+          id: `resumed_${Date.now()}`,
+          type: 'system',
+          content: data.message || `${data.userName} ha ripreso la conversazione`,
+          timestamp: data.timestamp || new Date().toISOString()
+        };
+        setMessages((prev) => [...prev, systemMessage]);
+      }
+    });
+
     setSocket(newSocket);
 
     return () => {
@@ -164,7 +179,17 @@ const ChatWindow = ({ chat, onClose }) => {
   }, [chat]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Scroll to bottom after messages update
+    if (messagesEndRef.current) {
+      // Use setTimeout to ensure DOM has updated
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'end',
+          inline: 'nearest'
+        });
+      }, 100);
+    }
   }, [messages]);
 
   const handleSendMessage = async (e) => {
@@ -181,10 +206,8 @@ const ChatWindow = ({ chat, onClose }) => {
         { message }
       );
 
-      // Add message to local state immediately
-      if (response.data.success && response.data.data.message) {
-        setMessages((prev) => [...prev, response.data.data.message]);
-      }
+      // Message will be added via WebSocket 'operator_message' event
+      // No need to add locally to avoid duplicates
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Errore durante l\'invio del messaggio');

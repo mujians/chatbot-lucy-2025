@@ -811,19 +811,12 @@ export const sendOperatorMessage = async (req, res) => {
       operatorName: result.message.operatorName,
     };
 
-    // Emit to user via Socket.IO (chat room for widget)
+    // Emit to chat room via Socket.IO (for widget and dashboard)
+    // Dashboard adds message locally, so it will receive via this room
     io.to(`chat_${sessionId}`).emit('operator_message', {
       sessionId: sessionId,
       message: operatorMessage,
     });
-
-    // Also emit to operator's personal room (for dashboard)
-    if (session.operatorId) {
-      io.to(`operator_${session.operatorId}`).emit('operator_message', {
-        sessionId: sessionId,
-        message: operatorMessage,
-      });
-    }
 
     console.log(`📤 Operator message sent to session ${sessionId}`);
 

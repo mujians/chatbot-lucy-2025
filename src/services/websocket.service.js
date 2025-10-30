@@ -69,6 +69,19 @@ export function setupWebSocketHandlers(io) {
       console.log(`⌨️  Operator typing in session ${sessionId}: ${isTyping}`);
     });
 
+    // User resumed chat - notify operator
+    socket.on('user_resumed_chat', (data) => {
+      const { sessionId, userName, timestamp } = data;
+      // Notify operator via chat room (operators are joined to this room)
+      socket.to(`chat_${sessionId}`).emit('user_resumed_chat', {
+        sessionId,
+        userName,
+        timestamp,
+        message: `${userName} ha ripreso la conversazione`
+      });
+      console.log(`🔄 User ${userName} resumed chat session ${sessionId}`);
+    });
+
     // Handle disconnection
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);
