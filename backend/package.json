@@ -7,7 +7,9 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
+    "dev": "node --watch src/server.js",
+    "fix-migration": "node scripts/fix-migration.cjs",
+    "deploy": "node scripts/fix-migration.cjs && npx prisma migrate deploy && node src/server.js"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0",
