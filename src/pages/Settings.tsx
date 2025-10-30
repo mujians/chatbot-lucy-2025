@@ -400,6 +400,20 @@ export default function Settings() {
         />
 
         {/* Email Settings */}
+        <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 mb-4">
+          <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">📧 Guida SendGrid</h4>
+          <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+            Per usare SendGrid, configura i seguenti valori:
+          </p>
+          <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
+            <li><strong>SMTP Host:</strong> smtp.sendgrid.net</li>
+            <li><strong>SMTP Port:</strong> 587</li>
+            <li><strong>SMTP User:</strong> apikey <span className="italic">(letteralmente "apikey")</span></li>
+            <li><strong>SMTP Password:</strong> La tua API Key SendGrid (es: SG.xxxxx...)</li>
+            <li><strong>Email From:</strong> Il tuo indirizzo email verificato su SendGrid</li>
+          </ul>
+        </div>
+
         <SettingsSection
           title="Email (SMTP)"
           description="Configura il server SMTP per l'invio di email"
@@ -423,7 +437,8 @@ export default function Settings() {
               type: 'text',
               value: settings.smtpUser,
               onChange: (value) => handleChange('smtpUser', value),
-              placeholder: 'user@example.com',
+              placeholder: 'SendGrid: "apikey" | Gmail: user@example.com',
+              description: 'Per SendGrid, inserisci letteralmente "apikey" (senza virgolette)',
             },
             {
               label: 'SMTP Password',

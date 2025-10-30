@@ -70,7 +70,7 @@ export const updateSetting = async (req, res) => {
     const { key } = req.params;
     const { value } = req.body;
 
-    if (value === undefined) {
+    if (value === undefined || value === null) {
       return res.status(400).json({
         error: { message: 'Value is required' },
       });
@@ -87,11 +87,14 @@ export const updateSetting = async (req, res) => {
       });
     }
 
+    // Convert value to string for database storage
+    const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+
     // Update setting
     const updated = await prisma.systemSettings.update({
       where: { key },
       data: {
-        value,
+        value: stringValue,
         updatedBy: req.operator.id, // Track who updated
       },
     });
@@ -104,7 +107,10 @@ export const updateSetting = async (req, res) => {
   } catch (error) {
     console.error('Update setting error:', error);
     res.status(500).json({
-      error: { message: 'Internal server error' },
+      error: {
+        message: 'Internal server error',
+        details: error.message
+      },
     });
   }
 };
@@ -118,23 +124,27 @@ export const upsertSetting = async (req, res) => {
   try {
     const { key, value, description, category } = req.body;
 
-    if (!key || value === undefined) {
+    if (!key || value === undefined || value === null) {
       return res.status(400).json({
         error: { message: 'Key and value are required' },
       });
     }
 
+    // Convert value to string for database storage
+    // Database schema expects String @db.Text
+    const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
+
     const setting = await prisma.systemSettings.upsert({
       where: { key },
       update: {
-        value,
+        value: stringValue,
         ...(description && { description }),
         ...(category && { category }),
         updatedBy: req.operator.id,
       },
       create: {
         key,
-        value,
+        value: stringValue,
         description,
         category,
         updatedBy: req.operator.id,
@@ -148,8 +158,12 @@ export const upsertSetting = async (req, res) => {
     });
   } catch (error) {
     console.error('Upsert setting error:', error);
+    console.error('Failed key:', key, 'value:', value);
     res.status(500).json({
-      error: { message: 'Internal server error' },
+      error: {
+        message: 'Internal server error',
+        details: error.message
+      },
     });
   }
 };
@@ -270,6 +284,19 @@ export const testEmailConnection = async (req, res) => {
     if (!testEmail) {
       return res.status(400).json({
         error: { message: 'Test email address required' },
+      });
+    }
+
+    // Re-initialize email service with latest settings from database
+    await emailService.initialize();
+
+    if (!emailService.isReady()) {
+      return res.status(400).json({
+        error: {
+          message: 'SMTP not configured',
+          details: 'Please configure SMTP settings (Host, Port, User, Password) before testing.',
+          hint: 'For SendGrid: Host=smtp.sendgrid.net, Port=587, User=apikey, Password=<your_api_key>',
+        },
       });
     }
 
