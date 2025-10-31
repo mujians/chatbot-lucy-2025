@@ -8,6 +8,72 @@
 
 ## 🔴 **BLOCKERS - Da Risolvere IMMEDIATAMENTE**
 
+### ❌ **ISSUE #1A: Messaggio Vuoto Dopo Creazione Ticket**
+**Severity**: HIGH - UX Bug Visibile
+**Status**: 🔴 OPEN
+**Reported**: 31 Ottobre 2025, 23:59
+
+**Sintomi**:
+- Utente compila form ticket e clicca "Invia"
+- Appare un messaggio vuoto (balloon/bubble vuota)
+- Poi appare "✅ Ticket creato! Ti ricontatteremo al più presto"
+- Il balloon vuoto rimane visibile nello storico
+
+**Probabile Causa**:
+- `addMessage()` chiamato con contenuto vuoto o undefined
+- Due chiamate addMessage() successive
+- Form ticket rimosso ma lascia elemento DOM vuoto
+
+**File Coinvolti**:
+- `snippets/chatbot-popup.liquid` (submitTicket function, showTicketForm)
+- Lines ~2477-2520 circa
+
+**Debug Necessario**:
+- [ ] Verificare submitTicket() - quanti addMessage() chiamati?
+- [ ] Verificare se form viene rimosso correttamente
+- [ ] Verificare parametri addMessage()
+
+**Effort**: 15 min
+
+---
+
+### ❌ **ISSUE #1B: Nessuna Notifica/Counter Ticket in Dashboard**
+**Severity**: HIGH - Feature Mancante
+**Status**: 🔴 OPEN
+**Reported**: 31 Ottobre 2025, 23:59
+
+**Sintomi**:
+- Nuovo ticket creato da utente
+- Dashboard sidebar NON mostra notifica
+- Nessun counter/badge numerico
+- Operatore non sa che c'è un nuovo ticket
+
+**Comportamento Atteso**:
+```
+Sidebar Menu:
+📊 Dashboard
+💬 Chat (2)  ← counter chat attive
+📋 Ticket (3) ← MANCA questo counter! 🔴
+👤 Operatori
+⚙️ Settings
+```
+
+**Soluzione Necessaria**:
+1. Backend: WebSocket event `new_ticket` → emette a dashboard room
+2. Backend: API GET /api/tickets/count → ritorna unread count
+3. Dashboard: Listener WebSocket + update badge
+4. Dashboard: Badge rosso con numero tickets pending
+
+**File Coinvolti**:
+- Backend: `src/services/websocket.service.js`
+- Backend: `src/controllers/ticket.controller.js`
+- Dashboard: Sidebar component (trovare quale)
+- Dashboard: WebSocket setup
+
+**Effort**: 45 min
+
+---
+
 ### ✅ **ISSUE #1: Messaggi Operatore NON Visibili in Dashboard**
 **Severity**: CRITICAL - Sistema inutilizzabile
 **Status**: ✅ FIXED - Commit aab6e33
@@ -286,19 +352,21 @@ T=10s+: Se ancora offline → emit operator_disconnected
 
 ## 📊 **PRIORITÀ ESECUZIONE**
 
-### **OGGI (BLOCKING)**:
-1. 🔴 **ISSUE #1**: Debug messaggi operatore non visibili (45 min)
-2. 🔴 **ISSUE #2**: Check operatore online su resume (40 min)
-3. 🟡 **ISSUE #3**: Smart actions non spariscono (20 min)
-4. 🟡 **ISSUE #4**: Grace period reconnect operatore (30 min)
+### **OGGI (BLOCKING)** - Aggiornato 31/10/2025 23:59:
+1. ✅ **ISSUE #1**: Debug messaggi operatore non visibili (45 min) - COMPLETATO
+2. 🔴 **ISSUE #1A**: Messaggio vuoto ticket (15 min) 🆕
+3. 🔴 **ISSUE #1B**: Notifiche ticket sidebar (45 min) 🆕
+4. 🔴 **ISSUE #2**: Check operatore online su resume (40 min)
+5. 🔴 **ISSUE #5**: Nessun operatore disponibile check (30 min)
+6. 🟡 **ISSUE #3**: Smart actions non spariscono (20 min)
+7. 🟡 **ISSUE #4**: Grace period reconnect operatore (30 min)
 
-**Tempo totale**: ~2.5 ore
+**Tempo totale rimanente**: ~3 ore
 
-### **DOMANI**:
-5. ISSUE #5: Nessun operatore disponibile (30 min)
-6. ISSUE #6: Operatore non risponde timeout (25 min)
-7. ISSUE #9: User disconnect notification (20 min)
-8. ISSUE #7: Session expiry (20 min)
+### **NEXT BATCH**:
+8. ISSUE #6: Operatore non risponde timeout (25 min)
+9. ISSUE #9: User disconnect notification (20 min)
+10. ISSUE #7: Session expiry (20 min)
 
 **Tempo totale**: ~1.5 ore
 
