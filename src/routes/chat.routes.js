@@ -32,6 +32,7 @@ import {
 import { convertChatToTicket } from '../controllers/ticket.controller.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.middleware.js';
 import { uploadService } from '../services/upload.service.js';
+import { doubleCsrfProtection } from '../server.js';
 
 const router = express.Router();
 
@@ -43,30 +44,30 @@ router.post('/session/:sessionId/request-operator', requestOperator);
 router.post('/session/:sessionId/cancel-operator-request', cancelOperatorRequest);
 router.post('/session/:sessionId/reopen', reopenSession);
 
-// Protected routes (for operators)
+// Protected routes (for operators) - v2.2 CSRF protected
 router.get('/sessions', authenticateToken, getSessions);
 router.get('/sessions/active', authenticateToken, getActiveSessions); // Must be before /:sessionId
-router.post('/sessions/:sessionId/accept-operator', authenticateToken, acceptOperator);
-router.post('/sessions/:sessionId/operator-intervene', authenticateToken, operatorIntervene);
-router.post('/sessions/:sessionId/operator-message', authenticateToken, sendOperatorMessage);
-router.post('/sessions/:sessionId/close', authenticateToken, closeSession);
-router.post('/sessions/:sessionId/mark-read', authenticateToken, markMessagesAsRead);
-router.delete('/sessions/:sessionId', authenticateToken, deleteSession);
-router.post('/sessions/:sessionId/archive', authenticateToken, archiveSession);
-router.post('/sessions/:sessionId/unarchive', authenticateToken, unarchiveSession);
-router.post('/sessions/:sessionId/flag', authenticateToken, flagSession);
-router.post('/sessions/:sessionId/unflag', authenticateToken, unflagSession);
-router.post('/sessions/:sessionId/transfer', authenticateToken, transferSession);
-router.post('/sessions/:sessionId/convert-to-ticket', authenticateToken, convertChatToTicket);
+router.post('/sessions/:sessionId/accept-operator', authenticateToken, doubleCsrfProtection, acceptOperator);
+router.post('/sessions/:sessionId/operator-intervene', authenticateToken, doubleCsrfProtection, operatorIntervene);
+router.post('/sessions/:sessionId/operator-message', authenticateToken, doubleCsrfProtection, sendOperatorMessage);
+router.post('/sessions/:sessionId/close', authenticateToken, doubleCsrfProtection, closeSession);
+router.post('/sessions/:sessionId/mark-read', authenticateToken, doubleCsrfProtection, markMessagesAsRead);
+router.delete('/sessions/:sessionId', authenticateToken, doubleCsrfProtection, deleteSession);
+router.post('/sessions/:sessionId/archive', authenticateToken, doubleCsrfProtection, archiveSession);
+router.post('/sessions/:sessionId/unarchive', authenticateToken, doubleCsrfProtection, unarchiveSession);
+router.post('/sessions/:sessionId/flag', authenticateToken, doubleCsrfProtection, flagSession);
+router.post('/sessions/:sessionId/unflag', authenticateToken, doubleCsrfProtection, unflagSession);
+router.post('/sessions/:sessionId/transfer', authenticateToken, doubleCsrfProtection, transferSession);
+router.post('/sessions/:sessionId/convert-to-ticket', authenticateToken, doubleCsrfProtection, convertChatToTicket);
 
-// P1.8: Priority and Tags routes
-router.put('/sessions/:sessionId/priority', authenticateToken, updatePriority);
-router.put('/sessions/:sessionId/tags', authenticateToken, updateTags);
+// P1.8: Priority and Tags routes - v2.2 CSRF protected
+router.put('/sessions/:sessionId/priority', authenticateToken, doubleCsrfProtection, updatePriority);
+router.put('/sessions/:sessionId/tags', authenticateToken, doubleCsrfProtection, updateTags);
 
-// P0.3: Internal Notes routes
-router.post('/sessions/:sessionId/notes', authenticateToken, addInternalNote);
-router.put('/sessions/:sessionId/notes/:noteId', authenticateToken, updateInternalNote);
-router.delete('/sessions/:sessionId/notes/:noteId', authenticateToken, deleteInternalNote);
+// P0.3: Internal Notes routes - v2.2 CSRF protected
+router.post('/sessions/:sessionId/notes', authenticateToken, doubleCsrfProtection, addInternalNote);
+router.put('/sessions/:sessionId/notes/:noteId', authenticateToken, doubleCsrfProtection, updateInternalNote);
+router.delete('/sessions/:sessionId/notes/:noteId', authenticateToken, doubleCsrfProtection, deleteInternalNote);
 
 // P0.2: User History route
 router.get('/users/:userId/history', authenticateToken, getUserHistory);
