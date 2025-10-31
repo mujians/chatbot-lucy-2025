@@ -329,9 +329,21 @@ export const getSession = async (req, res) => {
       });
     }
 
+    // Check if operator is currently online (WebSocket connected)
+    let operatorOnline = false;
+    if (session.operatorId && session.status === 'WITH_OPERATOR') {
+      const operatorRoom = `operator_${session.operatorId}`;
+      const operatorSockets = io.sockets.adapter.rooms.get(operatorRoom);
+      operatorOnline = operatorSockets && operatorSockets.size > 0;
+      console.log(`🔍 Operator ${session.operatorId} online check: ${operatorOnline} (${operatorSockets?.size || 0} sockets)`);
+    }
+
     res.json({
       success: true,
-      data: session,
+      data: {
+        ...session,
+        operatorOnline,
+      },
     });
   } catch (error) {
     console.error('Get session error:', error);
