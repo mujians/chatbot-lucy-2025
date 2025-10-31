@@ -32,7 +32,7 @@ import {
 import { convertChatToTicket } from '../controllers/ticket.controller.js';
 import { authenticateToken, optionalAuth } from '../middleware/auth.middleware.js';
 import { uploadService } from '../services/upload.service.js';
-import { doubleCsrfProtection } from '../server.js';
+import { doubleCsrfProtection } from '../middleware/csrf.middleware.js';
 
 const router = express.Router();
 

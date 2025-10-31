@@ -5,10 +5,10 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import { doubleCsrf } from 'csrf-csrf';
 import { config } from './config/index.js';
 import { PrismaClient } from '@prisma/client';
 import backgroundJobsService from './services/background-jobs.service.js';
+import { generateToken, doubleCsrfProtection } from './middleware/csrf.middleware.js';
 
 // Initialize Express app
 const app = express();
@@ -53,22 +53,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// CSRF Protection (v2.2 - Security Enhancement)
-const { generateToken, doubleCsrfProtection } = doubleCsrf({
-  getSecret: () => config.jwtSecret, // Use existing JWT secret
-  cookieName: '__Host-csrf-token',
-  cookieOptions: {
-    httpOnly: true,
-    sameSite: 'strict',
-    secure: config.nodeEnv === 'production',
-    path: '/',
-  },
-  size: 64,
-  ignoredMethods: ['GET', 'HEAD', 'OPTIONS'],
-});
-
-// Export for use in routes
-export { generateToken, doubleCsrfProtection };
+// CSRF Protection middleware imported from ./middleware/csrf.middleware.js (v2.2)
+// Separated to avoid circular dependency with routes
 
 // API Rate Limiting (v2.2 - Security Enhancement)
 const apiLimiter = rateLimit({

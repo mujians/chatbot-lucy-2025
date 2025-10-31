@@ -10,7 +10,7 @@ import {
   updateTicketStatus,
 } from '../controllers/ticket.controller.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
-import { doubleCsrfProtection } from '../server.js';
+import { doubleCsrfProtection } from '../middleware/csrf.middleware.js';
 
 const router = express.Router();
 
