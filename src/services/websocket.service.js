@@ -5,6 +5,10 @@
 
 import { prisma } from '../server.js';
 
+// Grace period for operator reconnect (10 seconds)
+// Maps operatorId -> timeout ID
+const operatorDisconnectTimeouts = new Map();
+
 export function setupWebSocketHandlers(io) {
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
@@ -15,7 +19,15 @@ export function setupWebSocketHandlers(io) {
       socket.join(`operator_${operatorId}`);
       // Store operatorId in socket data for disconnect handling
       socket.data.operatorId = operatorId;
-      console.log(`👤 Operator ${operatorId} joined room`);
+
+      // Cancel disconnect timeout if operator reconnected within grace period
+      if (operatorDisconnectTimeouts.has(operatorId)) {
+        clearTimeout(operatorDisconnectTimeouts.get(operatorId));
+        operatorDisconnectTimeouts.delete(operatorId);
+        console.log(`✅ Operator ${operatorId} reconnected within grace period - notification cancelled`);
+      } else {
+        console.log(`👤 Operator ${operatorId} joined room`);
+      }
     });
 
     // Operator leaves
@@ -126,7 +138,7 @@ export function setupWebSocketHandlers(io) {
       // Check if this was an operator disconnect
       const operatorId = socket.data.operatorId;
       if (operatorId) {
-        console.log(`👤 Operator ${operatorId} disconnected - checking active chats`);
+        console.log(`👤 Operator ${operatorId} disconnected - waiting 10s before notifying users`);
 
         try {
           // Find all active chats with this operator
@@ -142,17 +154,28 @@ export function setupWebSocketHandlers(io) {
           });
 
           if (activeChats.length > 0) {
-            console.log(`⚠️ Operator ${operatorId} has ${activeChats.length} active chat(s) - notifying users`);
+            console.log(`⏳ Operator ${operatorId} has ${activeChats.length} active chat(s) - grace period started`);
 
-            // Notify each user that operator disconnected
-            for (const chat of activeChats) {
-              io.to(`chat_${chat.id}`).emit('operator_disconnected', {
-                sessionId: chat.id,
-                message: 'L\'operatore non è più disponibile',
-                timestamp: new Date().toISOString()
-              });
-              console.log(`📤 Notified user in session ${chat.id} about operator disconnect`);
-            }
+            // Create timeout for delayed notification (10 seconds)
+            const timeoutId = setTimeout(() => {
+              console.log(`⚠️ Grace period expired for operator ${operatorId} - notifying users`);
+
+              // Notify each user that operator disconnected
+              for (const chat of activeChats) {
+                io.to(`chat_${chat.id}`).emit('operator_disconnected', {
+                  sessionId: chat.id,
+                  message: 'L\'operatore non è più disponibile',
+                  timestamp: new Date().toISOString()
+                });
+                console.log(`📤 Notified user in session ${chat.id} about operator disconnect`);
+              }
+
+              // Remove timeout from map
+              operatorDisconnectTimeouts.delete(operatorId);
+            }, 10000); // 10 seconds grace period
+
+            // Store timeout ID
+            operatorDisconnectTimeouts.set(operatorId, timeoutId);
           }
         } catch (error) {
           console.error('❌ Error handling operator disconnect:', error);
