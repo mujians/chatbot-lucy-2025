@@ -8,10 +8,11 @@
 
 ## 🔴 **BLOCKERS - Da Risolvere IMMEDIATAMENTE**
 
-### ❌ **ISSUE #1A: Messaggio Vuoto Dopo Creazione Ticket**
+### ✅ **ISSUE #1A: Messaggio Vuoto Dopo Creazione Ticket**
 **Severity**: HIGH - UX Bug Visibile
-**Status**: 🔴 OPEN
+**Status**: ✅ FIXED - Commit 50b2f5a
 **Reported**: 31 Ottobre 2025, 23:59
+**Fixed**: 1 Novembre 2025, 00:05
 
 **Sintomi**:
 - Utente compila form ticket e clicca "Invia"
@@ -32,6 +33,12 @@
 - [ ] Verificare submitTicket() - quanti addMessage() chiamati?
 - [ ] Verificare se form viene rimosso correttamente
 - [ ] Verificare parametri addMessage()
+
+**Soluzione Implementata**:
+- Usa closest('.chat-message') per trovare parent container
+- Rimuove intero container messaggio, non solo form
+- Poi aggiunge messaggio di successo
+- Nessun balloon vuoto rimane
 
 **Effort**: 15 min
 
@@ -352,10 +359,10 @@ T=10s+: Se ancora offline → emit operator_disconnected
 
 ## 📊 **PRIORITÀ ESECUZIONE**
 
-### **OGGI (BLOCKING)** - Aggiornato 31/10/2025 23:59:
+### **OGGI (BLOCKING)** - Aggiornato 01/11/2025 00:05:
 1. ✅ **ISSUE #1**: Debug messaggi operatore non visibili (45 min) - COMPLETATO
-2. 🔴 **ISSUE #1A**: Messaggio vuoto ticket (15 min) 🆕
-3. 🔴 **ISSUE #1B**: Notifiche ticket sidebar (45 min) 🆕
+2. ✅ **ISSUE #1A**: Messaggio vuoto ticket (15 min) - COMPLETATO
+3. 🔴 **ISSUE #1B**: Notifiche ticket sidebar (45 min) ← IN CORSO
 4. 🔴 **ISSUE #2**: Check operatore online su resume (40 min)
 5. 🔴 **ISSUE #5**: Nessun operatore disponibile check (30 min)
 6. 🟡 **ISSUE #3**: Smart actions non spariscono (20 min)
