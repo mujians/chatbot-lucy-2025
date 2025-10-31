@@ -39,6 +39,7 @@ const ChatWindow = ({ chat, onClose }) => {
   const [showNotesPanel, setShowNotesPanel] = useState(false);
 
   const messagesEndRef = useRef(null);
+  const messagesContainerRef = useRef(null); // Ref for scrollable container
   const typingTimeoutRef = useRef(null); // P0.5: For debouncing typing indicator
 
   // P0.5: Handle operator typing with debounce
@@ -221,16 +222,14 @@ const ChatWindow = ({ chat, onClose }) => {
   }, [chat]);
 
   useEffect(() => {
-    // Scroll to bottom after messages update
-    if (messagesEndRef.current) {
-      // Use setTimeout to ensure DOM has updated
-      setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'end',
-          inline: 'nearest'
-        });
-      }, 100);
+    // Scroll to bottom after messages update - using scrollTop for reliability
+    if (messagesContainerRef.current) {
+      // Use requestAnimationFrame to ensure DOM has fully updated
+      requestAnimationFrame(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      });
     }
   }, [messages]);
 
@@ -625,7 +624,7 @@ const ChatWindow = ({ chat, onClose }) => {
       </div>
 
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gray-50">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-6 bg-gray-50">
         <div className="max-w-4xl mx-auto space-y-4">
           {messages.map((message, index) => (
             <div
