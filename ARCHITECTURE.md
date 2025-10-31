@@ -708,25 +708,105 @@ When adding a new feature, follow this checklist:
   - Update README.md if user-facing
   - Update CHANGELOG.md
 
-### **2. Type Safety**
+### **2. Type Safety & Alignment**
 
-**ALWAYS maintain type alignment:**
+**CRITICAL: ALWAYS maintain type alignment across 4 layers:**
 
-1. Prisma schema (source of truth)
-2. Backend validation (matches Prisma enums)
-3. Frontend TypeScript types (matches backend)
+1. **Prisma schema** (source of truth)
+2. **Backend validation** (matches Prisma enums)
+3. **Frontend types** (`src/types/index.ts`)
+4. **Component local types** (StatusBadge, PriorityBadge, etc.)
 
-Example:
+#### ⚠️ **Common Pitfall: Component Local Types**
+
+Components may have **hardcoded types** that don't import from `@/types`:
+
 ```typescript
-// ❌ BAD: Frontend has status backend doesn't support
-TicketStatus = { PENDING, IN_PROGRESS, DONE }  // Frontend
-enum TicketStatus { PENDING, RESOLVED }  // Prisma
+// ❌ BAD: Hardcoded in component
+// src/components/shared/StatusBadge.tsx
+type TicketStatus = 'PENDING' | 'OPEN' | 'RESOLVED';  // Missing IN_PROGRESS!
 
-// ✅ GOOD: All aligned
-enum TicketStatus { PENDING, IN_PROGRESS, RESOLVED }  // Prisma
-validStatuses = ['PENDING', 'IN_PROGRESS', 'RESOLVED']  // Backend
-TicketStatus = { PENDING: 'PENDING', IN_PROGRESS: 'IN_PROGRESS', RESOLVED: 'RESOLVED' }  // Frontend
+// ✅ GOOD: Import from types
+import { TicketStatus } from '@/types';
 ```
+
+**Files to check when adding enum values:**
+- `prisma/schema.prisma` (database enum)
+- `src/controllers/*.js` (backend validation arrays)
+- `src/types/index.ts` (frontend types)
+- `src/components/shared/StatusBadge.tsx` (local type + Record)
+- `src/components/shared/PriorityBadge.tsx` (local type + Record)
+
+#### 📝 **Type Alignment Checklist**
+
+When adding a new enum value (e.g., `IN_PROGRESS` to `TicketStatus`):
+
+1. [ ] Update Prisma schema:
+   ```prisma
+   enum TicketStatus {
+     PENDING
+     ASSIGNED
+     OPEN
+     IN_PROGRESS  // NEW
+     RESOLVED
+     CLOSED
+   }
+   ```
+
+2. [ ] Update backend validation:
+   ```javascript
+   const validStatuses = ['PENDING', 'ASSIGNED', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+   ```
+
+3. [ ] Update frontend global types:
+   ```typescript
+   // src/types/index.ts
+   export const TicketStatus = {
+     PENDING: 'PENDING',
+     IN_PROGRESS: 'IN_PROGRESS',  // NEW
+     // ...
+   } as const;
+   ```
+
+4. [ ] Update component local types:
+   ```typescript
+   // src/components/shared/StatusBadge.tsx
+   type TicketStatus = 'PENDING' | 'ASSIGNED' | 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'CLOSED';
+
+   const statusConfig: Record<Status, {...}> = {
+     IN_PROGRESS: { label: 'In Lavorazione', variant: 'default' },  // NEW
+   };
+   ```
+
+5. [ ] Run TypeScript check:
+   ```bash
+   npx tsc --noEmit
+   ```
+
+#### 🐛 **Real Example: Inconsistency Found & Fixed (31 Oct 2025)**
+
+**Problem:** Added `IN_PROGRESS` to TicketStatus but forgot component local types.
+
+**Impact:** Build failed on Render deployment with:
+```
+error TS2322: Type 'TicketStatus' is not assignable to type 'Status'.
+  Type '"IN_PROGRESS"' is not assignable to type 'Status'.
+```
+
+**Root Cause:**
+- Prisma schema: ✅ Has IN_PROGRESS
+- Backend controller: ✅ Validates IN_PROGRESS
+- Frontend types: ✅ Has IN_PROGRESS
+- StatusBadge.tsx: ❌ Missing IN_PROGRESS (hardcoded type)
+
+**Fix:** Updated all 4 layers, verified with `tsc --noEmit`.
+
+**Commits:**
+- `d735d2d`: Prisma schema fix
+- `6621af4`: Frontend types fix
+- `44b4b95`: StatusBadge component fix
+
+**Lesson:** Always check component local types when modifying enums!
 
 ### **3. WebSocket Events**
 
