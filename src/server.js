@@ -2,6 +2,8 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 import { config } from './config/index.js';
 import { PrismaClient } from '@prisma/client';
 import backgroundJobsService from './services/background-jobs.service.js';
@@ -25,12 +27,47 @@ export const io = new Server(httpServer, {
 });
 
 // Middleware
+
+// Security Headers (v2.2 - Security Enhancement)
+app.use(helmet({
+  // Disable CSP for now (widget can be embedded in Shopify stores)
+  contentSecurityPolicy: false,
+  // Allow cross-origin embedding (widget in Shopify)
+  crossOriginEmbedderPolicy: false,
+  // Keep other security headers enabled:
+  // - X-Content-Type-Options: nosniff
+  // - X-Frame-Options: SAMEORIGIN
+  // - X-XSS-Protection: 0 (modern browsers use CSP)
+  // - Strict-Transport-Security (HSTS)
+  // - X-Download-Options: noopen
+  // - X-Permitted-Cross-Domain-Policies: none
+}));
+
 app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// API Rate Limiting (v2.2 - Security Enhancement)
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100, // 100 requests per IP per minute
+  message: {
+    error: {
+      message: 'Troppi tentativi. Riprova tra un minuto.',
+      code: 'RATE_LIMIT_EXCEEDED',
+    },
+  },
+  standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
+  legacyHeaders: false, // Disable `X-RateLimit-*` headers
+  // Skip rate limiting for health check
+  skip: (req) => req.path === '/health',
+});
+
+// Apply rate limiting to all API routes
+app.use('/api', apiLimiter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
