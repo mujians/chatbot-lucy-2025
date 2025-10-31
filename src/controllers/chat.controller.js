@@ -3,6 +3,46 @@ import { io } from '../server.js';
 import { generateAIResponse } from '../services/openai.service.js';
 import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
+import { startOperatorResponseTimeout, cancelOperatorResponseTimeout } from '../services/websocket.service.js';
+
+// Rate limiting: Track message timestamps per session
+// Map<sessionId, timestamp[]>
+const messageRateLimits = new Map();
+const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_MESSAGES = 10; // Max 10 messages per minute
+
+/**
+ * Check if session has exceeded rate limit
+ * Returns { allowed: boolean, remaining: number }
+ */
+function checkRateLimit(sessionId) {
+  const now = Date.now();
+
+  // Get existing timestamps for this session
+  let timestamps = messageRateLimits.get(sessionId) || [];
+
+  // Remove timestamps older than 1 minute
+  timestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW);
+
+  // Check if limit exceeded
+  if (timestamps.length >= RATE_LIMIT_MAX_MESSAGES) {
+    messageRateLimits.set(sessionId, timestamps);
+    return {
+      allowed: false,
+      remaining: 0,
+      resetIn: RATE_LIMIT_WINDOW - (now - timestamps[0])
+    };
+  }
+
+  // Add current timestamp
+  timestamps.push(now);
+  messageRateLimits.set(sessionId, timestamps);
+
+  return {
+    allowed: true,
+    remaining: RATE_LIMIT_MAX_MESSAGES - timestamps.length
+  };
+}
 
 /**
  * BUG #6: Create single message in Message table with transaction
@@ -329,6 +369,16 @@ export const getSession = async (req, res) => {
       });
     }
 
+    // Check session age - reject if older than 7 days
+    const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+    const sessionAge = Date.now() - new Date(session.createdAt).getTime();
+    if (sessionAge > SESSION_MAX_AGE) {
+      console.log(`⚠️ Session ${sessionId} expired (age: ${Math.floor(sessionAge / (24 * 60 * 60 * 1000))} days)`);
+      return res.status(410).json({
+        error: { message: 'Session expired', code: 'SESSION_EXPIRED' },
+      });
+    }
+
     // Check if operator is currently online (WebSocket connected)
     let operatorOnline = false;
     if (session.operatorId && session.status === 'WITH_OPERATOR') {
@@ -361,6 +411,20 @@ export const sendUserMessage = async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { message } = req.body;
+
+    // Check rate limit
+    const rateLimit = checkRateLimit(sessionId);
+    if (!rateLimit.allowed) {
+      const resetInSeconds = Math.ceil(rateLimit.resetIn / 1000);
+      console.log(`⚠️ Rate limit exceeded for session ${sessionId} - ${resetInSeconds}s until reset`);
+      return res.status(429).json({
+        error: {
+          message: 'Rallenta, per favore. Troppi messaggi inviati.',
+          code: 'RATE_LIMIT_EXCEEDED',
+          resetIn: resetInSeconds
+        }
+      });
+    }
 
     // Get session
     const session = await prisma.chatSession.findUnique({
@@ -755,6 +819,9 @@ export const acceptOperator = async (req, res) => {
 
     console.log(`✅ Operator ${operator.name} accepted chat ${sessionId}`);
 
+    // Start operator response timeout (10 minutes)
+    startOperatorResponseTimeout(sessionId, io);
+
     res.json({
       success: true,
       data: {
@@ -822,6 +889,9 @@ export const sendOperatorMessage = async (req, res) => {
       operatorId: result.message.operatorId,
       operatorName: result.message.operatorName,
     };
+
+    // Cancel operator response timeout - operator responded
+    cancelOperatorResponseTimeout(sessionId);
 
     // Emit to chat room via Socket.IO (for widget and dashboard)
     // Dashboard adds message locally, so it will receive via this room

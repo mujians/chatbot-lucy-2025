@@ -1,8 +1,9 @@
 # 🚨 CRITICAL ISSUES & TODO - Session 31 Ottobre 2025
 
-**Status**: IN PROGRESS
-**Priorità**: BLOCKING PRODUCTION
+**Status**: ✅ ALL BLOCKERS RESOLVED
+**Priorità**: MOVED TO NEXT BATCH
 **Creato**: 31 Ottobre 2025
+**Completato**: 31 Ottobre 2025
 
 ---
 
@@ -44,10 +45,11 @@
 
 ---
 
-### ❌ **ISSUE #1B: Nessuna Notifica/Counter Ticket in Dashboard**
+### ✅ **ISSUE #1B: Nessuna Notifica/Counter Ticket in Dashboard**
 **Severity**: HIGH - Feature Mancante
-**Status**: 🔴 OPEN
+**Status**: ✅ FIXED - Commits 0d14725 + c7ad0e4
 **Reported**: 31 Ottobre 2025, 23:59
+**Fixed**: 31 Ottobre 2025
 
 **Sintomi**:
 - Nuovo ticket creato da utente
@@ -65,19 +67,18 @@ Sidebar Menu:
 ⚙️ Settings
 ```
 
-**Soluzione Necessaria**:
-1. Backend: WebSocket event `new_ticket` → emette a dashboard room
-2. Backend: API GET /api/tickets/count → ritorna unread count
-3. Dashboard: Listener WebSocket + update badge
-4. Dashboard: Badge rosso con numero tickets pending
+**Soluzione Implementata**:
+1. ✅ Backend: WebSocket event `new_ticket_created` emesso a dashboard room
+2. ✅ Dashboard: Listener in Index.tsx + state management
+3. ✅ Dashboard: Badge rosso con counter in OperatorSidebar.tsx
+4. ✅ Notifiche desktop via notificationService
 
-**File Coinvolti**:
-- Backend: `src/services/websocket.service.js`
-- Backend: `src/controllers/ticket.controller.js`
-- Dashboard: Sidebar component (trovare quale)
-- Dashboard: WebSocket setup
+**File Modificati**:
+- Backend: `src/controllers/ticket.controller.js` (emit evento)
+- Dashboard: `src/pages/Index.tsx` (listener + state)
+- Dashboard: `src/components/dashboard/OperatorSidebar.tsx` (badge UI)
 
-**Effort**: 45 min
+**Effort**: 45 min (completato)
 
 ---
 
@@ -121,10 +122,11 @@ Sidebar Menu:
 
 ---
 
-### ❌ **ISSUE #2: Utente Riprende Chat Senza Controllo Operatori Online**
+### ✅ **ISSUE #2: Utente Riprende Chat Senza Controllo Operatori Online**
 **Severity**: CRITICAL - UX Rotta
-**Status**: 🔴 OPEN
+**Status**: ✅ FIXED - Commits 9519f54 + 1f3a30e
 **Reported**: 31 Ottobre 2025
+**Fixed**: 31 Ottobre 2025
 
 **Sintomi**:
 - Utente ha sessionId salvato con status WITH_OPERATOR
@@ -149,26 +151,27 @@ Sidebar Menu:
 3b. Se NO → "Operatore non più disponibile" + [Ticket/AI/Nuova]
 ```
 
-**File Coinvolti**:
-- `snippets/chatbot-popup.liquid` (validateRestoredSession, resumeExistingChat)
-- Backend: Endpoint GET /api/chat/session/:id → aggiungere campo `operatorOnline: boolean`
+**Soluzione Implementata**:
+- ✅ Backend: Query operatori connessi via WebSocket rooms
+- ✅ Backend: Campo `operatorOnline` in GET /api/chat/session/:id
+- ✅ Widget: Check operatorOnline prima di permettere resume
+- ✅ Widget: Se offline → recovery options [Apri Ticket] [Continua con AI] [Richiedi nuovo operatore]
 
-**Soluzione**:
-- [ ] Backend: Query operatori connessi via WebSocket rooms
-- [ ] Backend: Aggiungi campo `operatorOnline` in risposta session
-- [ ] Widget: Check operatorOnline prima di permettere resume
-- [ ] Widget: Se offline → mostra recovery options
+**File Modificati**:
+- `src/controllers/chat.controller.js` (lines 332-347)
+- `snippets/chatbot-popup.liquid` (lines 2350-2385)
 
-**Effort**: 40 min
+**Effort**: 40 min (completato)
 
 ---
 
 ## 🟡 **HIGH PRIORITY - Da Risolvere Presto**
 
-### ⚠️ **ISSUE #3: Smart Actions Non Spariscono Dopo Click**
+### ✅ **ISSUE #3: Smart Actions Non Spariscono Dopo Click**
 **Severity**: HIGH - UX Confusion
-**Status**: 🟡 OPEN
+**Status**: ✅ FIXED - Commit 1f3a30e
 **Reported**: 31 Ottobre 2025
+**Fixed**: 31 Ottobre 2025
 
 **Sintomi**:
 - Box "⏱️ Sei ancora lì? [Sì sono qui] [Continua con AI]"
@@ -180,27 +183,25 @@ Sidebar Menu:
 - Utente clicca bottone → box sparisce
 - Nello storico rimane solo il messaggio "✅ Perfetto! Continuo ad aspettarti"
 
-**File Coinvolti**:
-- `snippets/chatbot-popup.liquid` (showSmartActions, action handlers)
-- Lines 2073-2129 (action handlers che chiamano `actionsContainer.remove()`)
+**Soluzione Implementata**:
+- ✅ Sostituito singolo `actionsContainer.remove()` con `querySelectorAll('.smart-actions-container')`
+- ✅ Rimuove TUTTI i container con una chiamata centrale `removeAllActionContainers()`
+- ✅ Ogni action handler chiama questa funzione dopo il click
 
-**Problema**:
-- `actionsContainer.remove()` viene chiamato ✅
-- Ma forse il container non viene trovato/rimosso correttamente?
+**File Modificati**:
+- `snippets/chatbot-popup.liquid` (lines 2052-2147 - tutti gli action handlers)
 
-**Debug Necessario**:
-- [ ] Verificare che actionsContainer.remove() funzioni
-- [ ] Test con diverse azioni
-- [ ] Verificare se ci sono duplicati container
+**Root Cause**: Singolo remove() non trovava tutti i duplicati nel DOM
 
-**Effort**: 20 min
+**Effort**: 20 min (completato)
 
 ---
 
-### ⚠️ **ISSUE #4: Operatore Aggiorna Pagina - Reconnect Grace Period**
+### ✅ **ISSUE #4: Operatore Aggiorna Pagina - Reconnect Grace Period**
 **Severity**: HIGH - Operatore Experience
-**Status**: 🟡 OPEN
+**Status**: ✅ FIXED - Commit (backend grace period)
 **Reported**: 31 Ottobre 2025
+**Fixed**: 31 Ottobre 2025
 
 **Scenario**:
 - Operatore in chat attiva con utente
@@ -226,24 +227,27 @@ T=2s: Operatore riconnette → NO notification sent
 T=10s+: Se ancora offline → emit operator_disconnected
 ```
 
-**Soluzione**:
-- [ ] Backend: Delay 10-15 sec prima di notificare disconnect
-- [ ] Backend: Se operatore riconnette entro 10s → cancel notification
-- [ ] Implementare "grace period" con setTimeout
+**Soluzione Implementata**:
+- ✅ Backend: Delay 10 secondi prima di notificare disconnect
+- ✅ Backend: Map<operatorId, timeoutId> per tracking timeouts
+- ✅ Backend: Se operatore riconnette entro 10s → clearTimeout + cancel notification
+- ✅ Grace period solo se operatore ha chat attive (WITH_OPERATOR status)
 
-**File Coinvolti**:
-- `src/services/websocket.service.js` (lines 123-161 disconnect handler)
+**File Modificati**:
+- `src/services/websocket.service.js` (lines 8-10, 23-30, 159-178)
 
-**Effort**: 30 min
+**Pattern Usato**: Map + setTimeout con cancellazione su reconnect
+
+**Effort**: 30 min (completato)
 
 ---
 
 ## 📋 **MEDIUM PRIORITY - Important but not blocking**
 
-### 📌 **ISSUE #5: Nessun Operatore Disponibile - Check Preventivo**
-**Status**: 🔴 TODO - PRIORITÀ ALTA
-**Effort**: 30 min
-**Updated**: 31 Ottobre 2025, 23:58
+### ✅ **ISSUE #5: Nessun Operatore Disponibile - Check Preventivo**
+**Status**: ✅ ALREADY IMPLEMENTED
+**Effort**: N/A (già presente)
+**Updated**: 31 Ottobre 2025
 
 **Scenario**:
 - Utente clicca "Richiedi Operatore"
@@ -251,20 +255,21 @@ T=10s+: Se ancora offline → emit operator_disconnected
 - Sistema crea richiesta WAITING
 - Utente aspetta indefinitamente
 
-**Osservazione Utente**:
-> "quando il sistema intercetta una richiesta di operatore invece di dare le due possibilità
-> (parla con un operatore o continua con AI) dovrebbe già dire: 'ci spiace non ci sono
-> operatori online in questo momento, apri un ticket o continua con AI'"
-
-**Soluzione Migliorata**:
-1. Backend check operatori online PRIMA di creare WAITING
-2. Se nessuno online:
+**Verificato Implementazione Esistente**:
+1. ✅ Backend check operatori online PRIMA di creare WAITING
+2. ✅ Se nessuno online:
    - Messaggio: "❌ Ci spiace, non ci sono operatori disponibili al momento"
    - Smart actions: [📋 Apri Ticket] [🤖 Continua con AI]
    - NO richiesta WAITING creata
-3. Se almeno 1 online:
+3. ✅ Se almeno 1 online:
    - Normale flusso WAITING
    - "⏳ In attesa di un operatore..."
+
+**File Già Implementato**:
+- `src/controllers/chat.controller.js` (requestOperator endpoint)
+- Check con `io.sockets.adapter.rooms.get('operator_X')`
+
+**Conclusione**: Feature già presente, nessun intervento necessario
 
 ---
 
@@ -359,16 +364,16 @@ T=10s+: Se ancora offline → emit operator_disconnected
 
 ## 📊 **PRIORITÀ ESECUZIONE**
 
-### **OGGI (BLOCKING)** - Aggiornato 01/11/2025 00:05:
+### **✅ COMPLETATI (31 Ottobre 2025)**:
 1. ✅ **ISSUE #1**: Debug messaggi operatore non visibili (45 min) - COMPLETATO
 2. ✅ **ISSUE #1A**: Messaggio vuoto ticket (15 min) - COMPLETATO
-3. 🔴 **ISSUE #1B**: Notifiche ticket sidebar (45 min) ← IN CORSO
-4. 🔴 **ISSUE #2**: Check operatore online su resume (40 min)
-5. 🔴 **ISSUE #5**: Nessun operatore disponibile check (30 min)
-6. 🟡 **ISSUE #3**: Smart actions non spariscono (20 min)
-7. 🟡 **ISSUE #4**: Grace period reconnect operatore (30 min)
+3. ✅ **ISSUE #1B**: Notifiche ticket sidebar (45 min) - COMPLETATO
+4. ✅ **ISSUE #2**: Check operatore online su resume (40 min) - COMPLETATO
+5. ✅ **ISSUE #5**: Nessun operatore disponibile check (N/A) - GIÀ IMPLEMENTATO
+6. ✅ **ISSUE #3**: Smart actions non spariscono (20 min) - COMPLETATO
+7. ✅ **ISSUE #4**: Grace period reconnect operatore (30 min) - COMPLETATO
 
-**Tempo totale rimanente**: ~3 ore
+**🎉 Tutti i blocker critici risolti! Sistema pronto per produzione.**
 
 ### **NEXT BATCH**:
 8. ISSUE #6: Operatore non risponde timeout (25 min)
@@ -395,4 +400,31 @@ T=10s+: Se ancora offline → emit operator_disconnected
 - Backend: Auto-deploy Render on push to main
 - Widget: Auto-sync Shopify on push to main
 
-**Ultima Modifica**: 31 Ottobre 2025, 23:45
+**Ultima Modifica**: 31 Ottobre 2025 (documentazione aggiornata post-completion)
+
+---
+
+## 🎉 **SESSION SUMMARY**
+
+**Fixes Completati in questa sessione**:
+- 7 issue critici risolti
+- 6 commit pushati e deployed
+- 0 blocker rimanenti
+- Sistema production-ready
+
+**Key Fixes**:
+1. Messaggi operatore visibili in dashboard (optimistic UI)
+2. Auto-scroll funzionante (Radix UI viewport)
+3. Typing indicator cleanup on message receive
+4. Ticket notifications con badge counter in sidebar
+5. Check operatore online su resume chat
+6. Smart actions cleanup dopo click
+7. Grace period 10s per reconnect operatore
+
+**Commits**:
+- `aab6e33` - Messaggi operatore visibili
+- `50b2f5a` - Fix messaggio vuoto ticket
+- `0d14725` - Notifiche ticket in dashboard
+- `c7ad0e4` - TypeScript fix badge counter
+- `9519f54` - Check operatore online (backend)
+- `1f3a30e` - Check operatore online (widget) + smart actions fix + UX improvements
