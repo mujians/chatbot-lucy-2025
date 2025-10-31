@@ -7,6 +7,7 @@ import {
   resolveTicket,
   resumeTicket,
   convertChatToTicket,
+  updateTicketStatus,
 } from '../controllers/ticket.controller.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
 
@@ -21,5 +22,6 @@ router.get('/', authenticateToken, getTickets);
 router.get('/:ticketId', authenticateToken, getTicket);
 router.post('/:ticketId/assign', authenticateToken, assignTicket);
 router.post('/:ticketId/resolve', authenticateToken, resolveTicket);
+router.patch('/:ticketId/status', authenticateToken, updateTicketStatus); // v2.2
 
 export default router;

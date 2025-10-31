@@ -180,7 +180,7 @@ export const getTickets = async (req, res) => {
           },
         },
       },
-      orderBy: [{ priority: 'desc' }, { createdAt: 'desc' }],
+      orderBy: { createdAt: 'desc' }, // v2.2: Order by creation date (most recent first)
     });
 
     res.json({
@@ -507,6 +507,88 @@ export const convertChatToTicket = async (req, res) => {
     });
   } catch (error) {
     console.error('Convert chat to ticket error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Update ticket status (v2.2 - Generic status update)
+ * PATCH /api/tickets/:ticketId/status
+ */
+export const updateTicketStatus = async (req, res) => {
+  try {
+    const { ticketId } = req.params;
+    const { status, notes } = req.body;
+
+    // Validate status
+    const validStatuses = ['PENDING', 'ASSIGNED', 'OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        error: {
+          message: `Invalid status. Valid statuses: ${validStatuses.join(', ')}`,
+          code: 'INVALID_STATUS'
+        },
+      });
+    }
+
+    const updateData = { status };
+
+    // Add timestamp based on status
+    if (status === 'RESOLVED' || status === 'CLOSED') {
+      updateData.resolvedAt = new Date();
+    }
+
+    // Add notes if provided
+    if (notes) {
+      updateData.resolutionNotes = notes;
+    }
+
+    const ticket = await prisma.ticket.update({
+      where: { id: ticketId },
+      data: updateData,
+      include: {
+        operator: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Increment operator stats if resolved
+    if ((status === 'RESOLVED' || status === 'CLOSED') && ticket.operatorId) {
+      await prisma.operator.update({
+        where: { id: ticket.operatorId },
+        data: {
+          totalTicketsHandled: { increment: 1 },
+        },
+      });
+    }
+
+    // Notify via WebSocket
+    io.to('dashboard').emit('ticket_status_updated', {
+      ticketId: ticket.id,
+      status: ticket.status,
+      operatorId: ticket.operatorId,
+    });
+
+    res.json({
+      success: true,
+      data: ticket,
+    });
+  } catch (error) {
+    console.error('Update ticket status error:', error);
+
+    // Handle ticket not found
+    if (error.code === 'P2025') {
+      return res.status(404).json({
+        error: { message: 'Ticket not found' },
+      });
+    }
+
     res.status(500).json({
       error: { message: 'Internal server error' },
     });
