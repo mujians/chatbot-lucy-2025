@@ -1,9 +1,9 @@
 # 🔒 SECURITY AUDIT REPORT
 
-**Date**: 31 Ottobre 2025, 14:30
+**Date**: 31 Ottobre 2025, 14:30 (Updated: 31 Oct 2025 - CSRF Protection Added)
 **Auditor**: Claude Code
 **Scope**: Full system security review
-**Status**: ✅ COMPLETED
+**Status**: ✅ COMPLETED + Enhanced (v2.2.0)
 
 ---
 
@@ -14,7 +14,12 @@
 **Medium Issues**: 1 ⚠️ DOCUMENTED
 **Low Issues**: 1 ✅ VERIFIED SECURE
 
-**Overall Security Rating**: 🟢 **GOOD** (after fixes)
+**Security Enhancements Implemented (P1)**:
+- ✅ API Rate Limiting (v2.1)
+- ✅ CSRF Protection (v2.2.0)
+- ✅ Security Headers via helmet.js (v2.1)
+
+**Overall Security Rating**: 🟢 **STRONG** (enhanced from GOOD)
 
 ---
 
@@ -254,25 +259,30 @@ if (result.count === 0) {
 None - all critical issues resolved ✅
 
 ### **Short Term (P1)**
-1. **API Rate Limiting** (1-2 hours)
-   - Add global rate limiter (express-rate-limit)
-   - 100 requests/minute per IP
-   - Prevents API abuse
+1. ✅ **API Rate Limiting** (COMPLETED - v2.1)
+   - ✅ Added express-rate-limit middleware
+   - ✅ 100 requests/minute per IP
+   - ✅ Applied to all /api routes
+   - ✅ Prevents API abuse
 
-2. **CSRF Protection** (1 hour)
-   - Add CSRF tokens for state-changing operations
-   - Protects against cross-site attacks
+2. ✅ **CSRF Protection** (COMPLETED - v2.2.0, 31 Oct 2025)
+   - ✅ Added csrf-csrf package (double-submit cookie pattern)
+   - ✅ Protected all operator POST/PUT/DELETE endpoints (19 endpoints)
+   - ✅ HttpOnly secure cookie: `__Host-csrf-token`
+   - ✅ Frontend integration: token fetched on login, sent in X-CSRF-Token header
+   - ✅ Public widget routes remain unprotected (by design)
+   - Commits: `33d3f70` (backend), `f6b1e16` (frontend)
+
+3. ✅ **Security Headers** (COMPLETED - v2.1)
+   - ✅ Added helmet.js middleware
+   - ✅ X-Frame-Options, X-Content-Type-Options, HSTS, etc.
+   - ✅ CSP disabled (widget embedded in Shopify stores)
 
 ### **Medium Term (P2)**
-3. **SessionToken Enhancement** (2-3 hours)
+4. **SessionToken Enhancement** (2-3 hours)
    - Implement session ownership validation
    - Add sessionToken to database schema
    - Validate token on each request
-
-4. **Security Headers** (30 min)
-   - Add helmet.js middleware
-   - X-Frame-Options, X-Content-Type-Options, etc.
-   - Content Security Policy (CSP)
 
 5. **Audit Logging** (2-3 hours)
    - Log all operator actions
