@@ -952,25 +952,7 @@ export const acceptOperator = async (req, res) => {
       });
     }
 
-    // Get session
-    const session = await prisma.chatSession.findUnique({
-      where: { id: sessionId },
-    });
-
-    if (!session) {
-      return res.status(404).json({
-        error: { message: 'Session not found' },
-      });
-    }
-
-    // Verify session is in WAITING status
-    if (session.status !== 'WAITING') {
-      return res.status(400).json({
-        error: { message: 'Session is not waiting for operator' },
-      });
-    }
-
-    // Get operator details
+    // Get operator details first
     const operator = await prisma.operator.findUnique({
       where: { id: operatorId },
     });
@@ -981,18 +963,64 @@ export const acceptOperator = async (req, res) => {
       });
     }
 
-    // BUG #6: Create system message with transaction and update session
-    const { message: systemMessage } = await createMessage(
-      sessionId,
-      {
+    // SECURITY FIX: Atomic check-and-set to prevent race condition
+    // Try to update session only if status is WAITING (atomic operation)
+    let session;
+    try {
+      session = await prisma.chatSession.updateMany({
+        where: {
+          id: sessionId,
+          status: 'WAITING', // Only update if still WAITING
+        },
+        data: {
+          status: 'WITH_OPERATOR',
+          operatorId: operatorId,
+        },
+      });
+
+      // Check if update was successful (count > 0 means session was found and updated)
+      if (session.count === 0) {
+        // Session not found OR already accepted by another operator
+        const existingSession = await prisma.chatSession.findUnique({
+          where: { id: sessionId },
+          select: { id: true, status: true, operatorId: true },
+        });
+
+        if (!existingSession) {
+          return res.status(404).json({
+            error: { message: 'Session not found' },
+          });
+        }
+
+        if (existingSession.status !== 'WAITING') {
+          return res.status(409).json({
+            error: {
+              message: 'Session already accepted by another operator',
+              code: 'ALREADY_ACCEPTED'
+            },
+          });
+        }
+      }
+
+      // Fetch updated session with operator details
+      session = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+      });
+    } catch (error) {
+      console.error('Error updating session:', error);
+      return res.status(500).json({
+        error: { message: 'Failed to accept session' },
+      });
+    }
+
+    // Create system message
+    const systemMessage = await prisma.message.create({
+      data: {
+        sessionId: sessionId,
         type: 'SYSTEM',
         content: `${operator.name} si è unito alla chat`,
       },
-      {
-        status: 'WITH_OPERATOR',
-        operatorId: operatorId,
-      }
-    );
+    });
 
     // Update operator stats
     await prisma.operator.update({
