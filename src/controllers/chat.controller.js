@@ -525,8 +525,8 @@ export const sendUserMessage = async (req, res) => {
       });
     }
 
-    // Get session
-    const session = await prisma.chatSession.findUnique({
+    // Get full session with operator details
+    const fullSession = await prisma.chatSession.findUnique({
       where: { id: sessionId },
       include: {
         operator: {
@@ -535,7 +535,7 @@ export const sendUserMessage = async (req, res) => {
       }
     });
 
-    if (!session) {
+    if (!fullSession) {
       return res.status(404).json({
         error: { message: 'Session not found' },
       });
