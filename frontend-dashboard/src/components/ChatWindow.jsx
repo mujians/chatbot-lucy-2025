@@ -113,8 +113,16 @@ const ChatWindow = ({ chat, onClose }) => {
     // Listen for operator messages sent by other operators
     newSocket.on('operator_message', (data) => {
       console.log('📨 Received operator_message:', data);
+      const currentOperatorId = localStorage.getItem('operator_id');
+
+      // Only add if it's from a DIFFERENT operator (avoid duplicates of own messages)
       if (data.sessionId === chat.id && data.message) {
-        setMessages((prev) => [...prev, data.message]);
+        if (data.message.operatorId !== currentOperatorId) {
+          setMessages((prev) => [...prev, data.message]);
+          console.log('✅ Added message from other operator');
+        } else {
+          console.log('⏭️ Skipped own message (already added locally)');
+        }
       }
     });
 
@@ -247,8 +255,11 @@ const ChatWindow = ({ chat, onClose }) => {
         { message }
       );
 
-      // Message will be added via WebSocket 'operator_message' event
-      // No need to add locally to avoid duplicates
+      // Add message to local state IMMEDIATELY for instant feedback
+      // WebSocket will send to widget, but we add locally to avoid waiting
+      if (response.data.success && response.data.data.message) {
+        setMessages((prev) => [...prev, response.data.data.message]);
+      }
     } catch (error) {
       console.error('Error sending message:', error);
       alert('Errore durante l\'invio del messaggio');
