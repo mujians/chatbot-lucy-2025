@@ -1,10 +1,10 @@
 # Lucine Chatbot - Dashboard Operatori
 
-**Aggiornato:** 29 Ottobre 2025 | **Versione:** 2.0.0 | **Status:** ✅ Production Ready
+**Aggiornato:** 31 Ottobre 2025 | **Versione:** 2.1.0 | **Status:** ✅ Production Ready
 
 Dashboard web real-time per operatori del sistema Lucine Chatbot - customer support intelligente (AI + Human) per e-commerce Shopify.
 
-> **Latest Update (29/10/2025)**: BUG #6 deployed successfully! Messages migrated to separate table. All P0-CRITICAL issues resolved. System 100% functional.
+> **Latest Update (31/10/2025)**: 🎉 **ALL 19 CRITICAL ISSUES RESOLVED!** Advanced UX improvements deployed: AI Chat Monitoring, timeout management (WAITING 5min, Operator 10min, User disconnect 5min), Chat Reopen feature, Spam Detection. System 100% production-ready. See `docs/COMPLETE_ISSUES_STATUS.md` for full changelog.
 
 ---
 
@@ -108,6 +108,10 @@ lucine-production/
 │   ├── App.tsx                 # Router + Providers
 │   └── main.tsx                # Entry point
 ├── docs/                       # Documentazione tecnica
+│   ├── COMPLETE_ISSUES_STATUS.md # ✨ Riepilogo completo tutti gli issue
+│   ├── STRUCTURE_CLARITY.md    # Guida architettura repository
+│   ├── CRITICAL_ISSUES_TODO.md # Issue critici (Session 1)
+│   ├── UX_FIXES_TODO.md        # UX improvements (Session 2)
 │   ├── SYSTEM_STATUS_REPORT.md # Stato implementazione
 │   ├── IMPLEMENTATION_PLAN.md  # Piano sviluppo
 │   ├── TECHNICAL_SCHEMA.md     # API reference completo
