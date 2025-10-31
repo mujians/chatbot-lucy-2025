@@ -3,6 +3,8 @@
  * Handles Socket.IO connections and events
  */
 
+import { prisma } from '../server.js';
+
 export function setupWebSocketHandlers(io) {
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
@@ -11,6 +13,8 @@ export function setupWebSocketHandlers(io) {
     socket.on('operator_join', (data) => {
       const { operatorId } = data;
       socket.join(`operator_${operatorId}`);
+      // Store operatorId in socket data for disconnect handling
+      socket.data.operatorId = operatorId;
       console.log(`👤 Operator ${operatorId} joined room`);
     });
 
@@ -116,8 +120,44 @@ export function setupWebSocketHandlers(io) {
     });
 
     // Handle disconnection
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);
+
+      // Check if this was an operator disconnect
+      const operatorId = socket.data.operatorId;
+      if (operatorId) {
+        console.log(`👤 Operator ${operatorId} disconnected - checking active chats`);
+
+        try {
+          // Find all active chats with this operator
+          const activeChats = await prisma.chatSession.findMany({
+            where: {
+              operatorId: operatorId,
+              status: 'WITH_OPERATOR'
+            },
+            select: {
+              id: true,
+              userName: true
+            }
+          });
+
+          if (activeChats.length > 0) {
+            console.log(`⚠️ Operator ${operatorId} has ${activeChats.length} active chat(s) - notifying users`);
+
+            // Notify each user that operator disconnected
+            for (const chat of activeChats) {
+              io.to(`chat_${chat.id}`).emit('operator_disconnected', {
+                sessionId: chat.id,
+                message: 'L\'operatore non è più disponibile',
+                timestamp: new Date().toISOString()
+              });
+              console.log(`📤 Notified user in session ${chat.id} about operator disconnect`);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Error handling operator disconnect:', error);
+        }
+      }
     });
   });
 
