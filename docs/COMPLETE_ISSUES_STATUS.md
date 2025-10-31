@@ -238,23 +238,143 @@
 - **Session 1 (Critical Blockers)**: 195 minutes (~3.25 hours)
 - **Session 2 (UX Improvements)**: 55 minutes
 - **Session 3 (Advanced UX)**: 255 minutes (~4.25 hours)
-- **Total**: 505 minutes (~8.5 hours)
+- **Session 4 (Security & Network)**: 120 minutes (~2 hours)
+- **Total**: 625 minutes (~10.5 hours)
 
 ### Code Changes
-- **Backend commits**: 2 (bcac63e, d79e236)
-- **Widget commits**: 1 (46c8610)
+- **Backend commits**: 3 (bcac63e, d79e236, 4f3adb7)
+- **Widget commits**: 2 (46c8610, cda89c1)
 - **Dashboard commits**: 1 (93d7d5f)
-- **Total commits**: 4
+- **Documentation commits**: 1 (277bd47)
+- **Total commits**: 7
 
 ### Files Modified
 - **Backend**: 3 files (`chat.controller.js`, `websocket.service.js`, `chat.routes.js`)
 - **Widget**: 1 file (`chatbot-popup.liquid`)
 - **Dashboard**: 2 files (`Index.tsx`, `api.ts`)
+- **Documentation**: 3 files (`COMPLETE_ISSUES_STATUS.md`, `README.md`, `SECURITY_AUDIT_REPORT.md`)
 
 ### Lines of Code
-- **Backend**: ~600 lines added/modified
-- **Widget**: ~142 lines added
+- **Backend**: ~680 lines added/modified
+- **Widget**: ~342 lines added
 - **Dashboard**: ~198 lines added
+- **Total**: ~1,220 lines
+
+---
+
+## 🆕 **SESSION 4: SECURITY & NETWORK** (31 Ottobre, 13:00)
+
+| ID | Issue | Category | Status | Commits | Effort |
+|---|---|---|---|---|---|
+| SEC-1 | Session Expiry (7 days) | Security | ✅ ALREADY IMPLEMENTED | N/A | N/A |
+| NET-1 | Network Quality Detection | Feature | ✅ FIXED | cda89c1 | 60 min |
+| SEC-2 | XSS Protection Audit | Security | ✅ VERIFIED SECURE | N/A | 15 min |
+| SEC-3 | SessionId Ownership Validation | Security | ⚠️ DOCUMENTED (Acceptable Risk) | N/A | 15 min |
+| SEC-4 | Race Condition - acceptOperator | Security | ✅ FIXED | 4f3adb7 | 30 min |
+
+**Session 4 Summary**: 4 issues resolved, 1 documented as acceptable risk
+
+**Components Modified**:
+- Widget: `chatbot-popup.liquid` (+200 lines - network detection)
+- Backend: `chat.controller.js` (+54/-26 lines - race condition fix)
+- Docs: `SECURITY_AUDIT_REPORT.md` (new comprehensive security report)
+
+---
+
+### **NET-1: Network Quality Detection** ✅
+**Scenario**: User loses WiFi connection, needs visual feedback and message queueing
+
+**Implementation**:
+- **Offline Detection**: navigator.onLine + WebSocket state
+- **Visual Indicators**: 🔴 Offline, 🟡 Reconnecting (with attempt counter), 🟢 Online
+- **Message Queue**: localStorage-based queue, auto-send when online
+- **Reconnection**: Max 5 attempts, graceful degradation
+- **User Feedback**: "💾 Messaggio salvato. Verrà inviato quando torni online."
+
+**Technical Details**:
+```javascript
+// Network state tracking
+let isOnline = navigator.onLine;
+let messageQueue = [];
+let reconnectAttempts = 0;
+
+// Browser events
+window.addEventListener('online', handleOnline);
+window.addEventListener('offline', handleOffline);
+
+// WebSocket events
+socket.on('disconnect', handleReconnecting);
+socket.on('connect', handleOnline);
+socket.on('reconnect_attempt', handleReconnecting);
+socket.on('reconnect_failed', handleOffline);
+
+// Message queueing
+if (!isOnline || !navigator.onLine) {
+  queueMessage(message);
+  localStorage.setItem('lucine_message_queue', JSON.stringify(messageQueue));
+}
+```
+
+**User Experience**:
+- Input disabled when offline
+- Placeholder: "🔴 Nessuna connessione..."
+- Visual banner at top of chat
+- Auto-hide "Online" after 3 seconds
+- Seamless recovery when connection restored
+
+**Commit**: cda89c1
+**Lines**: ~200 added
+
+---
+
+### **SEC-4: Race Condition Fix** ✅
+**Problem**: Two operators could simultaneously accept the same WAITING chat
+
+**Vulnerable Code**:
+```javascript
+const session = await findUnique({ where: { id } });
+if (session.status !== 'WAITING') return error;
+await update({ where: { id }, data: { status: 'WITH_OPERATOR', operatorId } });
+```
+
+**Attack Scenario**:
+- T=0: Operator A reads (status=WAITING) ✅
+- T=0: Operator B reads (status=WAITING) ✅ RACE!
+- T=1: Operator A updates (operatorId=A)
+- T=1: Operator B updates (operatorId=B) → OVERWRITES A!
+
+**Fix - Atomic Operation**:
+```javascript
+const result = await updateMany({
+  where: {
+    id: sessionId,
+    status: 'WAITING'  // Only update if STILL waiting
+  },
+  data: {
+    status: 'WITH_OPERATOR',
+    operatorId: operatorId
+  }
+});
+
+if (result.count === 0) {
+  // Already accepted by another operator
+  return res.status(409).json({
+    error: {
+      message: 'Session already accepted by another operator',
+      code: 'ALREADY_ACCEPTED'
+    }
+  });
+}
+```
+
+**How It Works**:
+1. Database performs atomic check-and-set
+2. If status changed → count=0, update fails
+3. Second operator gets HTTP 409 immediately
+4. No data corruption
+
+**Commit**: 4f3adb7
+**Files**: `src/controllers/chat.controller.js` (lines 966-1023)
 
 ---
 
