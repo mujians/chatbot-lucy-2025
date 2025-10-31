@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] - 2025-10-31 - CSRF PROTECTION 🔒
+
+### 🔒 Security Enhancement
+
+#### CSRF Protection Implementation (STEP 3)
+- **Added** csrf-csrf@^4.0.3 package for modern CSRF protection
+- **Added** cookie-parser@^1.4.7 for HttpOnly cookie handling
+- **Implemented** double-submit cookie pattern for all operator endpoints
+- **Created** `/api/csrf-token` endpoint for token generation
+- **Protected** 16 chat endpoints with CSRF middleware
+- **Protected** 3 ticket endpoints with CSRF middleware
+- **Configured** secure cookie: `__Host-csrf-token` (httpOnly, sameSite: strict)
+- **Frontend** integration: token fetched on login, sent in X-CSRF-Token header
+- Commits: `33d3f70` (backend), `f6b1e16` (frontend)
+
+**Protected Endpoints:**
+- All POST/PUT/DELETE routes requiring `authenticateToken` now also require `doubleCsrfProtection`
+- Public widget routes remain unprotected (no CSRF needed for public APIs)
+- GET/HEAD/OPTIONS automatically ignored (read-only operations)
+
+**Security Flow:**
+1. User logs in → Frontend fetches CSRF token from `/api/csrf-token`
+2. Backend sets HttpOnly cookie `__Host-csrf-token` + returns token in response
+3. Frontend stores token in React state + axios interceptor
+4. All state-changing requests include `X-CSRF-Token` header
+5. Backend validates: header token must match cookie token
+6. On logout → token cleared from state and interceptor
+
+**Documentation:**
+- Updated ARCHITECTURE.md with CSRF implementation details
+- Added security best practices examples
+- Updated stack tecnologico with new dependencies
+
+---
+
 ## [2.1.0] - 2025-10-31 - PRODUCTION READY 🎉
 
 ### 🎯 Major Release - Complete UX Overhaul & Security Hardening

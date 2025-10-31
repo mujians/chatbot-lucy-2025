@@ -1,6 +1,6 @@
 # 🏗️ LUCINE CHATBOT - SYSTEM ARCHITECTURE
 
-**Last Updated:** 31 Ottobre 2025
+**Last Updated:** 31 Ottobre 2025 (CSRF Protection Added)
 **Version:** 2.2.0
 **Status:** ✅ Production Ready
 
@@ -58,6 +58,7 @@ User Message (Widget)
 - **WebSocket:** Socket.io 4.7.5
 - **AI:** OpenAI GPT-4 + Embeddings (RAG)
 - **Auth:** JWT (jsonwebtoken)
+- **Security:** csrf-csrf (CSRF protection), helmet (security headers), express-rate-limit
 - **File Upload:** Cloudinary (multer)
 - **Email:** Nodemailer
 - **WhatsApp:** Twilio
@@ -667,10 +668,11 @@ export interface Ticket {
 - Max 5 reconnect attempts
 
 ### **Security** (v2.2)
-- API Rate Limiting: 100 req/min per IP (express-rate-limit)
-- Security Headers: helmet.js (HSTS, X-Frame-Options, etc.)
-- Race Condition Fix: Atomic accept operation
-- XSS Protection: Verified secure (HTML escaping)
+- **CSRF Protection:** Double-submit cookie pattern (csrf-csrf) on all operator POST/PUT/DELETE endpoints
+- **API Rate Limiting:** 100 req/min per IP (express-rate-limit)
+- **Security Headers:** helmet.js (HSTS, X-Frame-Options, etc.)
+- **Race Condition Fix:** Atomic accept operation
+- **XSS Protection:** Verified secure (HTML escaping)
 
 ---
 
@@ -902,10 +904,30 @@ if (!validStatuses.includes(req.body.status)) {
 ```javascript
 // routes/tickets.routes.js
 import { authenticateToken } from '../middleware/auth.middleware.js'
+import { doubleCsrfProtection } from '../server.js'
 
-router.get('/tickets', authenticateToken, getTickets)  // ✅
-router.get('/tickets', getTickets)  // ❌ Vulnerable!
+// ✅ GOOD: Public widget routes (no auth needed)
+router.post('/session', createSession)
+
+// ✅ GOOD: Read-only operator endpoints (JWT only)
+router.get('/tickets', authenticateToken, getTickets)
+
+// ✅ GOOD: State-changing operator endpoints (JWT + CSRF)
+router.post('/tickets/:id/assign', authenticateToken, doubleCsrfProtection, assignTicket)
+router.post('/sessions/:id/close', authenticateToken, doubleCsrfProtection, closeSession)
+
+// ❌ BAD: Missing authentication
+router.get('/tickets', getTickets)
+
+// ❌ BAD: Missing CSRF on state-changing endpoint
+router.post('/tickets/:id/assign', authenticateToken, assignTicket)
 ```
+
+**CSRF Protection Pattern:**
+- **Frontend:** Fetch token from `/api/csrf-token` after login
+- **Frontend:** Send token in `X-CSRF-Token` header on POST/PUT/DELETE
+- **Backend:** Validate token matches HttpOnly cookie (`__Host-csrf-token`)
+- **Public Routes:** No CSRF needed (widget endpoints remain unprotected)
 
 ### **7. Performance**
 
