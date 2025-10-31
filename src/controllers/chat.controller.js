@@ -3,19 +3,23 @@ import { io } from '../server.js';
 import { generateAIResponse } from '../services/openai.service.js';
 import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
-import { startOperatorResponseTimeout, cancelOperatorResponseTimeout } from '../services/websocket.service.js';
+import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout } from '../services/websocket.service.js';
 
 // Rate limiting: Track message timestamps per session
 // Map<sessionId, timestamp[]>
 const messageRateLimits = new Map();
 const RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 const RATE_LIMIT_MAX_MESSAGES = 10; // Max 10 messages per minute
+const SPAM_THRESHOLD = 20; // Notify operator if > 20 msg/min
+
+// Track if we already notified operator about spam (Map<sessionId, boolean>)
+const spamNotified = new Map();
 
 /**
  * Check if session has exceeded rate limit
- * Returns { allowed: boolean, remaining: number }
+ * Returns { allowed: boolean, remaining: number, spam: boolean }
  */
-function checkRateLimit(sessionId) {
+function checkRateLimit(sessionId, session = null) {
   const now = Date.now();
 
   // Get existing timestamps for this session
@@ -24,13 +28,31 @@ function checkRateLimit(sessionId) {
   // Remove timestamps older than 1 minute
   timestamps = timestamps.filter(ts => now - ts < RATE_LIMIT_WINDOW);
 
-  // Check if limit exceeded
+  // Check if this is spam (>20 msg/min) and notify operator
+  if (timestamps.length >= SPAM_THRESHOLD && !spamNotified.has(sessionId)) {
+    spamNotified.set(sessionId, true);
+
+    // Notify operator if session has one
+    if (session && session.operatorId) {
+      io.to(`operator_${session.operatorId}`).emit('user_spam_detected', {
+        sessionId: sessionId,
+        userName: session.userName || 'Utente',
+        messageCount: timestamps.length,
+        message: `Possibile spam: ${timestamps.length} messaggi nell'ultimo minuto`,
+        timestamp: new Date().toISOString(),
+      });
+      console.log(`🚨 Spam detected in session ${sessionId}: ${timestamps.length} messages/min`);
+    }
+  }
+
+  // Check if limit exceeded (normal rate limit at 10 msg/min)
   if (timestamps.length >= RATE_LIMIT_MAX_MESSAGES) {
     messageRateLimits.set(sessionId, timestamps);
     return {
       allowed: false,
       remaining: 0,
-      resetIn: RATE_LIMIT_WINDOW - (now - timestamps[0])
+      resetIn: RATE_LIMIT_WINDOW - (now - timestamps[0]),
+      spam: timestamps.length >= SPAM_THRESHOLD
     };
   }
 
@@ -40,7 +62,8 @@ function checkRateLimit(sessionId) {
 
   return {
     allowed: true,
-    remaining: RATE_LIMIT_MAX_MESSAGES - timestamps.length
+    remaining: RATE_LIMIT_MAX_MESSAGES - timestamps.length,
+    spam: false
   };
 }
 
@@ -312,11 +335,18 @@ export const createSession = async (req, res) => {
       },
     });
 
-    // Notify dashboard of new chat
+    // Notify dashboard of new chat (AI chat)
     io.to('dashboard').emit('new_chat_created', {
       sessionId: session.id,
       userName: session.userName,
       status: session.status,
+      createdAt: session.createdAt,
+    });
+
+    // Also emit specific AI chat event for monitoring
+    io.to('dashboard').emit('ai_chat_active', {
+      sessionId: session.id,
+      userName: session.userName,
       createdAt: session.createdAt,
     });
 
@@ -326,6 +356,58 @@ export const createSession = async (req, res) => {
     });
   } catch (error) {
     console.error('Create session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Get active AI chat sessions
+ * GET /api/chat/sessions/active
+ */
+export const getActiveSessions = async (req, res) => {
+  try {
+    const activeSessions = await prisma.chatSession.findMany({
+      where: {
+        status: 'ACTIVE',
+      },
+      select: {
+        id: true,
+        userName: true,
+        createdAt: true,
+        updatedAt: true,
+        messages: true,
+      },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+    });
+
+    // Parse messages and get last message for each session
+    const sessionsWithLastMessage = activeSessions.map(session => {
+      const messages = JSON.parse(session.messages || '[]');
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+      return {
+        id: session.id,
+        userName: session.userName || 'Utente',
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        lastMessage: lastMessage ? {
+          content: lastMessage.content?.substring(0, 100) || '',
+          timestamp: lastMessage.timestamp
+        } : null,
+        messageCount: messages.length,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: sessionsWithLastMessage,
+    });
+  } catch (error) {
+    console.error('Get active sessions error:', error);
     res.status(500).json({
       error: { message: 'Internal server error' },
     });
@@ -412,8 +494,25 @@ export const sendUserMessage = async (req, res) => {
     const { sessionId } = req.params;
     const { message } = req.body;
 
-    // Check rate limit
-    const rateLimit = checkRateLimit(sessionId);
+    // Get session first (for spam detection)
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        operatorId: true,
+        userName: true,
+        status: true,
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    // Check rate limit (pass session for spam detection)
+    const rateLimit = checkRateLimit(sessionId, session);
     if (!rateLimit.allowed) {
       const resetInSeconds = Math.ceil(rateLimit.resetIn / 1000);
       console.log(`⚠️ Rate limit exceeded for session ${sessionId} - ${resetInSeconds}s until reset`);
@@ -443,7 +542,7 @@ export const sendUserMessage = async (req, res) => {
     }
 
     // If status is WITH_OPERATOR, add user message and forward to operator
-    if (session.status === 'WITH_OPERATOR' && session.operatorId) {
+    if (fullSession.status === 'WITH_OPERATOR' && fullSession.operatorId) {
       // BUG #6: Create message in Message table with transaction
       const result = await createMessage(sessionId, {
         type: 'USER',
@@ -461,17 +560,17 @@ export const sendUserMessage = async (req, res) => {
       };
 
       // Emit to operator's personal room
-      io.to(`operator_${session.operatorId}`).emit('user_message', {
+      io.to(`operator_${fullSession.operatorId}`).emit('user_message', {
         sessionId: sessionId,
-        userName: session.userName,
+        userName: fullSession.userName,
         message: userMessage,
-        unreadCount: session.unreadMessageCount + 1,
+        unreadCount: fullSession.unreadMessageCount + 1,
       });
 
       // Also emit to chat room (for dashboard ChatWindow)
       io.to(`chat_${sessionId}`).emit('user_message', {
         sessionId: sessionId,
-        userName: session.userName,
+        userName: fullSession.userName,
         message: userMessage,
       });
 
@@ -481,7 +580,7 @@ export const sendUserMessage = async (req, res) => {
           message: userMessage,
           aiResponse: null,
           withOperator: true,
-          operatorName: session.operator?.name || 'Operatore'
+          operatorName: fullSession.operator?.name || 'Operatore'
         },
       });
     }
@@ -709,6 +808,9 @@ export const requestOperator = async (req, res) => {
 
     console.log(`⏳ Chat ${sessionId} waiting for operator (${availableOperators.length} available)`);
 
+    // Start WAITING timeout (5 minutes)
+    startWaitingTimeout(sessionId, io);
+
     res.json({
       success: true,
       data: {
@@ -720,6 +822,115 @@ export const requestOperator = async (req, res) => {
     });
   } catch (error) {
     console.error('Request operator error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Operator intervenes in AI chat
+ * POST /api/chat/sessions/:sessionId/operator-intervene
+ */
+export const operatorIntervene = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { operatorId } = req.body;
+
+    if (!operatorId) {
+      return res.status(400).json({
+        error: { message: 'Operator ID is required' },
+      });
+    }
+
+    // Get session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    // Verify session is ACTIVE (AI chat)
+    if (session.status !== 'ACTIVE') {
+      return res.status(400).json({
+        error: { message: 'Can only intervene in active AI chats' },
+      });
+    }
+
+    // Get operator details
+    const operator = await prisma.operator.findUnique({
+      where: { id: operatorId },
+    });
+
+    if (!operator) {
+      return res.status(404).json({
+        error: { message: 'Operator not found' },
+      });
+    }
+
+    // Create system message and update session to WITH_OPERATOR
+    const { message: systemMessage } = await createMessage(
+      sessionId,
+      {
+        type: 'SYSTEM',
+        content: `${operator.name} si è unito alla chat`,
+      },
+      {
+        status: 'WITH_OPERATOR',
+        operatorId: operatorId,
+      }
+    );
+
+    // Update operator stats
+    await prisma.operator.update({
+      where: { id: operatorId },
+      data: {
+        totalChatsHandled: { increment: 1 },
+      },
+    });
+
+    // Notify widget: operator joined
+    io.to(`chat_${sessionId}`).emit('operator_joined', {
+      sessionId: sessionId,
+      operatorName: operator.name,
+      operatorId: operator.id,
+      message: {
+        id: systemMessage.id,
+        type: systemMessage.type,
+        content: systemMessage.content,
+        timestamp: systemMessage.createdAt,
+      },
+    });
+
+    // Notify dashboard: AI chat taken
+    io.to('dashboard').emit('ai_chat_intervened', {
+      sessionId: sessionId,
+      operatorId: operator.id,
+      operatorName: operator.name,
+    });
+
+    console.log(`✅ Operator ${operator.name} intervened in AI chat ${sessionId}`);
+
+    // Start operator response timeout
+    startOperatorResponseTimeout(sessionId, io);
+
+    res.json({
+      success: true,
+      data: {
+        session: {
+          id: sessionId,
+          status: 'WITH_OPERATOR',
+          operatorId: operator.id,
+          operatorName: operator.name,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Operator intervene error:', error);
     res.status(500).json({
       error: { message: 'Internal server error' },
     });
@@ -819,6 +1030,9 @@ export const acceptOperator = async (req, res) => {
 
     console.log(`✅ Operator ${operator.name} accepted chat ${sessionId}`);
 
+    // Cancel WAITING timeout - operator accepted
+    cancelWaitingTimeout(sessionId);
+
     // Start operator response timeout (10 minutes)
     startOperatorResponseTimeout(sessionId, io);
 
@@ -908,6 +1122,108 @@ export const sendOperatorMessage = async (req, res) => {
     });
   } catch (error) {
     console.error('Send operator message error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * Reopen recently closed chat session
+ * POST /api/chat/sessions/:sessionId/reopen
+ */
+export const reopenSession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        status: true,
+        operatorId: true,
+        updatedAt: true,
+        operator: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    // Verify session is CLOSED
+    if (session.status !== 'CLOSED') {
+      return res.status(400).json({
+        error: { message: 'Can only reopen closed chats' },
+      });
+    }
+
+    // Check if closed less than 5 minutes ago
+    const closedTime = Date.now() - new Date(session.updatedAt).getTime();
+    const REOPEN_WINDOW = 5 * 60 * 1000; // 5 minutes
+
+    if (closedTime > REOPEN_WINDOW) {
+      return res.status(410).json({
+        error: {
+          message: 'Chat closed too long ago. Please start a new chat.',
+          code: 'REOPEN_WINDOW_EXPIRED'
+        },
+      });
+    }
+
+    // Reopen session
+    const result = await createMessage(
+      sessionId,
+      {
+        type: 'SYSTEM',
+        content: 'Chat riaperta dall\'utente',
+      },
+      {
+        status: 'WITH_OPERATOR',
+      }
+    );
+
+    console.log(`🔄 Session ${sessionId} reopened by user`);
+
+    // Notify operator
+    if (session.operatorId) {
+      io.to(`operator_${session.operatorId}`).emit('chat_reopened', {
+        sessionId: sessionId,
+        message: 'L\'utente ha riaperto la chat',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Also notify chat room
+      io.to(`chat_${sessionId}`).emit('chat_reopened', {
+        sessionId: sessionId,
+        operatorName: session.operator?.name,
+        message: {
+          id: result.message.id,
+          type: result.message.type,
+          content: result.message.content,
+          timestamp: result.message.createdAt,
+        },
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: sessionId,
+        status: 'WITH_OPERATOR',
+        operatorName: session.operator?.name,
+      },
+    });
+  } catch (error) {
+    console.error('Reopen session error:', error);
     res.status(500).json({
       error: { message: 'Internal server error' },
     });

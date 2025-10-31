@@ -14,6 +14,16 @@ const operatorDisconnectTimeouts = new Map();
 // Tracks if operator responds after accepting chat
 const operatorResponseTimeouts = new Map();
 
+// WAITING timeout (5 minutes)
+// Maps sessionId -> timeout ID
+// Tracks if user waits too long for operator
+const waitingTimeouts = new Map();
+
+// User disconnect timeout (5 minutes)
+// Maps sessionId -> timeout ID
+// Auto-close chat if user doesn't reconnect
+const userDisconnectTimeouts = new Map();
+
 export function setupWebSocketHandlers(io) {
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
@@ -59,7 +69,15 @@ export function setupWebSocketHandlers(io) {
       socket.join(`chat_${sessionId}`);
       // Store sessionId in socket data for disconnect handling
       socket.data.userSessionId = sessionId;
-      console.log(`💬 User joined chat session: ${sessionId}`);
+
+      // Cancel user disconnect timeout if user reconnected
+      if (userDisconnectTimeouts.has(sessionId)) {
+        clearTimeout(userDisconnectTimeouts.get(sessionId));
+        userDisconnectTimeouts.delete(sessionId);
+        console.log(`✅ User reconnected to session ${sessionId} - auto-close cancelled`);
+      } else {
+        console.log(`💬 User joined chat session: ${sessionId}`);
+      }
     });
 
     // Leave chat session room
@@ -202,6 +220,7 @@ export function setupWebSocketHandlers(io) {
               id: true,
               status: true,
               operatorId: true,
+              userName: true,
               operator: {
                 select: {
                   id: true,
@@ -218,6 +237,7 @@ export function setupWebSocketHandlers(io) {
             // Notify operator room (dashboard)
             io.to(`operator_${session.operatorId}`).emit('user_disconnected', {
               sessionId: userSessionId,
+              userName: session.userName || 'Utente',
               message: 'L\'utente si è disconnesso',
               timestamp: new Date().toISOString()
             });
@@ -225,9 +245,55 @@ export function setupWebSocketHandlers(io) {
             // Also emit to chat room in case operator is viewing the chat
             io.to(`chat_${userSessionId}`).emit('user_disconnected', {
               sessionId: userSessionId,
+              userName: session.userName || 'Utente',
               message: 'L\'utente si è disconnesso',
               timestamp: new Date().toISOString()
             });
+
+            // Start auto-close timeout (5 minutes)
+            const timeoutId = setTimeout(async () => {
+              console.log(`⚠️  User disconnect timeout expired for session ${userSessionId} - auto closing`);
+
+              try {
+                // Check if session is still WITH_OPERATOR (user never reconnected)
+                const latestSession = await prisma.chatSession.findUnique({
+                  where: { id: userSessionId },
+                  select: { status: true, operatorId: true }
+                });
+
+                if (latestSession && latestSession.status === 'WITH_OPERATOR') {
+                  // Auto-close session
+                  await prisma.chatSession.update({
+                    where: { id: userSessionId },
+                    data: {
+                      status: 'CLOSED',
+                      closureReason: 'USER_DISCONNECTED_TIMEOUT',
+                    },
+                  });
+
+                  console.log(`✅ Auto-closed session ${userSessionId} due to user disconnect`);
+
+                  // Notify operator
+                  if (latestSession.operatorId) {
+                    io.to(`operator_${latestSession.operatorId}`).emit('chat_auto_closed', {
+                      sessionId: userSessionId,
+                      reason: 'L\'utente non è tornato dopo 5 minuti',
+                      message: 'Chat chiusa automaticamente',
+                      timestamp: new Date().toISOString(),
+                    });
+                  }
+                }
+
+                // Clean up timeout tracking
+                userDisconnectTimeouts.delete(userSessionId);
+              } catch (error) {
+                console.error(`❌ Error auto-closing session ${userSessionId}:`, error);
+              }
+            }, 5 * 60 * 1000); // 5 minutes
+
+            // Store timeout ID
+            userDisconnectTimeouts.set(userSessionId, timeoutId);
+            console.log(`⏱️  Started 5-minute auto-close timeout for session ${userSessionId}`);
           }
         } catch (error) {
           console.error('❌ Error handling user disconnect:', error);
@@ -260,6 +326,7 @@ export function startOperatorResponseTimeout(sessionId, io) {
           id: true,
           status: true,
           operatorId: true,
+          userName: true,
           messages: true,
         },
       });
@@ -280,14 +347,35 @@ export function startOperatorResponseTimeout(sessionId, io) {
         return;
       }
 
-      // Operator never responded - notify user
-      console.log(`📤 Notifying user in session ${sessionId}: operator not responding`);
+      // Operator never responded - notify both user and operator
+      console.log(`📤 Notifying user and operator in session ${sessionId}: timeout`);
 
+      // Update session to CLOSED
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: {
+          status: 'CLOSED',
+          closureReason: 'OPERATOR_TIMEOUT',
+        },
+      });
+
+      // Notify user
       io.to(`chat_${sessionId}`).emit('operator_not_responding', {
         sessionId: sessionId,
         message: 'L\'operatore non ha risposto. Scegli come continuare:',
         timestamp: new Date().toISOString(),
       });
+
+      // Notify operator
+      if (session.operatorId) {
+        io.to(`operator_${session.operatorId}`).emit('chat_timeout_cancelled', {
+          sessionId: sessionId,
+          userName: session.userName || 'Utente',
+          reason: 'Non hai risposto entro 10 minuti',
+          message: 'Questa chat è stata cancellata perché non hai risposto in tempo.',
+          timestamp: new Date().toISOString(),
+        });
+      }
 
       // Clean up timeout tracking
       operatorResponseTimeouts.delete(sessionId);
@@ -309,5 +397,79 @@ export function cancelOperatorResponseTimeout(sessionId) {
     clearTimeout(operatorResponseTimeouts.get(sessionId));
     operatorResponseTimeouts.delete(sessionId);
     console.log(`✅ Operator response timeout cancelled for session ${sessionId} - operator responded`);
+  }
+}
+
+/**
+ * Start WAITING timeout
+ * Called when user requests operator and goes into WAITING status
+ * If no operator accepts within 5 minutes, notify user
+ */
+export function startWaitingTimeout(sessionId, io) {
+  const TIMEOUT_DURATION = 5 * 60 * 1000; // 5 minutes
+
+  console.log(`⏱️  Starting WAITING timeout for session ${sessionId} (5 minutes)`);
+
+  const timeoutId = setTimeout(async () => {
+    console.log(`⚠️  WAITING timeout expired for session ${sessionId}`);
+
+    try {
+      // Check if session is still WAITING
+      const session = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          status: true,
+        },
+      });
+
+      if (!session || session.status !== 'WAITING') {
+        console.log(`ℹ️  Session ${sessionId} no longer waiting, skipping timeout notification`);
+        waitingTimeouts.delete(sessionId);
+        return;
+      }
+
+      // Session still waiting after 5 minutes - notify user
+      console.log(`📤 Notifying user in session ${sessionId}: no operator available`);
+
+      // Update session back to ACTIVE
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: { status: 'ACTIVE' },
+      });
+
+      // Notify user
+      io.to(`chat_${sessionId}`).emit('operator_wait_timeout', {
+        sessionId: sessionId,
+        message: 'Nessun operatore ha risposto. Scegli come continuare:',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Notify dashboard to remove from waiting list
+      io.to('dashboard').emit('chat_request_cancelled', {
+        sessionId: sessionId,
+        reason: 'timeout_5_minutes',
+      });
+
+      // Clean up timeout tracking
+      waitingTimeouts.delete(sessionId);
+    } catch (error) {
+      console.error(`❌ Error handling WAITING timeout for session ${sessionId}:`, error);
+    }
+  }, TIMEOUT_DURATION);
+
+  // Store timeout ID
+  waitingTimeouts.set(sessionId, timeoutId);
+}
+
+/**
+ * Cancel WAITING timeout
+ * Called when operator accepts the request
+ */
+export function cancelWaitingTimeout(sessionId) {
+  if (waitingTimeouts.has(sessionId)) {
+    clearTimeout(waitingTimeouts.get(sessionId));
+    waitingTimeouts.delete(sessionId);
+    console.log(`✅ WAITING timeout cancelled for session ${sessionId} - operator accepted`);
   }
 }

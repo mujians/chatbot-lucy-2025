@@ -2,12 +2,15 @@ import express from 'express';
 import {
   createSession,
   getSession,
+  getActiveSessions,
   sendUserMessage,
   requestOperator,
   cancelOperatorRequest,
   acceptOperator,
+  operatorIntervene,
   sendOperatorMessage,
   closeSession,
+  reopenSession,
   getSessions,
   deleteSession,
   archiveSession,
@@ -38,10 +41,13 @@ router.get('/session/:sessionId', getSession);
 router.post('/session/:sessionId/message', sendUserMessage);
 router.post('/session/:sessionId/request-operator', requestOperator);
 router.post('/session/:sessionId/cancel-operator-request', cancelOperatorRequest);
+router.post('/session/:sessionId/reopen', reopenSession);
 
 // Protected routes (for operators)
 router.get('/sessions', authenticateToken, getSessions);
+router.get('/sessions/active', authenticateToken, getActiveSessions); // Must be before /:sessionId
 router.post('/sessions/:sessionId/accept-operator', authenticateToken, acceptOperator);
+router.post('/sessions/:sessionId/operator-intervene', authenticateToken, operatorIntervene);
 router.post('/sessions/:sessionId/operator-message', authenticateToken, sendOperatorMessage);
 router.post('/sessions/:sessionId/close', authenticateToken, closeSession);
 router.post('/sessions/:sessionId/mark-read', authenticateToken, markMessagesAsRead);
