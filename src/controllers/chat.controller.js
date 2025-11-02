@@ -68,6 +68,56 @@ function checkRateLimit(sessionId, session = null) {
 }
 
 /**
+ * v2.3.3: Extract user name from message content
+ * Detects if a message looks like a name response
+ * Returns the extracted name or null
+ */
+function extractUserName(messageContent) {
+  if (!messageContent || typeof messageContent !== 'string') {
+    return null;
+  }
+
+  const trimmed = messageContent.trim();
+
+  // Skip if message is too long (likely not just a name)
+  if (trimmed.length > 50) {
+    return null;
+  }
+
+  // Skip if message contains typical conversation phrases
+  const conversationPhrases = [
+    'ciao', 'salve', 'buongiorno', 'buonasera', 'grazie', 'prego',
+    'aiuto', 'help', 'problema', 'non funziona', 'come', 'cosa',
+    'quando', 'dove', 'perché', 'vorrei', 'ho bisogno', 'mi serve'
+  ];
+
+  const lowerMessage = trimmed.toLowerCase();
+  if (conversationPhrases.some(phrase => lowerMessage.includes(phrase))) {
+    return null;
+  }
+
+  // Common patterns for name responses
+  const namePatterns = [
+    /^(?:mi chiamo|sono|il mio nome è|chiamami)\s+([a-zA-ZÀ-ÿ\s]+)$/i,
+    /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+){0,2})$/  // 1-3 words with letters only
+  ];
+
+  for (const pattern of namePatterns) {
+    const match = trimmed.match(pattern);
+    if (match) {
+      const name = match[1] || match[0];
+      // Capitalize first letter of each word
+      return name.trim()
+        .split(/\s+/)
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+    }
+  }
+
+  return null;
+}
+
+/**
  * BUG #6: Create single message in Message table with transaction
  * Replaces addMessageWithLock for new Message model
  */
@@ -495,7 +545,7 @@ export const sendUserMessage = async (req, res) => {
     const { message } = req.body;
 
     // Get session first (for spam detection)
-    const session = await prisma.chatSession.findUnique({
+    let session = await prisma.chatSession.findUnique({
       where: { id: sessionId },
       select: {
         id: true,
@@ -509,6 +559,35 @@ export const sendUserMessage = async (req, res) => {
       return res.status(404).json({
         error: { message: 'Session not found' },
       });
+    }
+
+    // v2.3.3: Extract and save user name if not already set
+    if (!session.userName && session.status === 'WITH_OPERATOR') {
+      const extractedName = extractUserName(message);
+      if (extractedName) {
+        console.log(`📝 Extracted user name: "${extractedName}" from session ${sessionId}`);
+
+        // Update session with userName
+        session = await prisma.chatSession.update({
+          where: { id: sessionId },
+          data: { userName: extractedName },
+          select: {
+            id: true,
+            operatorId: true,
+            userName: true,
+            status: true,
+          },
+        });
+
+        // Notify operator that we captured the name
+        if (session.operatorId) {
+          io.to(`operator_${session.operatorId}`).emit('user_name_captured', {
+            sessionId: sessionId,
+            userName: extractedName,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
     }
 
     // Check rate limit (pass session for spam detection)
