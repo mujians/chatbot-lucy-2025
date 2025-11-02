@@ -895,6 +895,16 @@ export const operatorIntervene = async (req, res) => {
       }
     );
 
+    // v2.3.3: Send automatic greeting message from operator
+    const greetingMessage = await prisma.message.create({
+      data: {
+        sessionId: sessionId,
+        type: 'OPERATOR',
+        content: `Ciao! Dammi un attimo che controllo la conversazione. Intanto, come ti chiami?`,
+        operatorId: operator.id,
+      },
+    });
+
     // Update operator stats
     await prisma.operator.update({
       where: { id: operatorId },
@@ -913,6 +923,19 @@ export const operatorIntervene = async (req, res) => {
         type: systemMessage.type,
         content: systemMessage.content,
         timestamp: systemMessage.createdAt,
+      },
+    });
+
+    // v2.3.3: Notify widget: automatic greeting message
+    io.to(`chat_${sessionId}`).emit('operator_message', {
+      sessionId: sessionId,
+      message: {
+        id: greetingMessage.id,
+        type: greetingMessage.type,
+        content: greetingMessage.content,
+        timestamp: greetingMessage.createdAt,
+        operatorId: operator.id,
+        operatorName: operator.name,
       },
     });
 
@@ -1029,6 +1052,29 @@ export const acceptOperator = async (req, res) => {
         sessionId: sessionId,
         type: 'SYSTEM',
         content: `${operator.name} si è unito alla chat`,
+      },
+    });
+
+    // v2.3.3: Send automatic greeting message from operator
+    const greetingMessage = await prisma.message.create({
+      data: {
+        sessionId: sessionId,
+        type: 'OPERATOR',
+        content: `Ciao! Dammi un attimo che controllo la conversazione. Intanto, come ti chiami?`,
+        operatorId: operator.id,
+      },
+    });
+
+    // Notify widget: automatic greeting message
+    io.to(`chat_${sessionId}`).emit('operator_message', {
+      sessionId: sessionId,
+      message: {
+        id: greetingMessage.id,
+        type: greetingMessage.type,
+        content: greetingMessage.content,
+        timestamp: greetingMessage.createdAt,
+        operatorId: operator.id,
+        operatorName: operator.name,
       },
     });
 
