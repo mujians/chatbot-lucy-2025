@@ -102,6 +102,22 @@ app.get('/api/csrf-token', (req, res) => {
   });
 });
 
+// Debug endpoint to check CSRF token and cookies (v2.3.1)
+app.get('/api/debug-csrf', (req, res) => {
+  res.json({
+    success: true,
+    debug: {
+      cookies: req.cookies,
+      headers: {
+        'x-csrf-token': req.headers['x-csrf-token'],
+        'origin': req.headers['origin'],
+        'referer': req.headers['referer'],
+      },
+      corsOrigins: config.corsOrigins,
+    },
+  });
+});
+
 // Import routes
 import authRoutes from './routes/auth.routes.js';
 import chatRoutes from './routes/chat.routes.js';
