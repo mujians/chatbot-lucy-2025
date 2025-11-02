@@ -24,6 +24,16 @@ const waitingTimeouts = new Map();
 // Auto-close chat if user doesn't reconnect
 const userDisconnectTimeouts = new Map();
 
+// v2.3.4: User inactivity check (5 minutes warning)
+// Maps sessionId -> timeout ID
+// Sends "sei ancora qui?" after 5 min of inactivity
+const userInactivityWarningTimeouts = new Map();
+
+// v2.3.4: User inactivity final timeout (10 minutes total)
+// Maps sessionId -> timeout ID
+// Auto-close if user doesn't respond to presence check
+const userInactivityFinalTimeouts = new Map();
+
 export function setupWebSocketHandlers(io) {
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
@@ -126,12 +136,17 @@ export function setupWebSocketHandlers(io) {
     // User confirmed presence - notify operator
     socket.on('user_confirmed_presence', (data) => {
       const { sessionId, timestamp } = data;
+
+      // v2.3.4: Cancel inactivity timers and restart
+      cancelUserInactivityCheck(sessionId);
+      startUserInactivityCheck(sessionId, io);
+
       socket.to(`chat_${sessionId}`).emit('user_confirmed_presence', {
         sessionId,
         timestamp,
         message: '✅ L\'utente ha confermato la sua presenza'
       });
-      console.log(`✅ User confirmed presence in session ${sessionId}`);
+      console.log(`✅ User confirmed presence in session ${sessionId} - inactivity timer reset`);
     });
 
     // User switched to AI - notify operator
@@ -471,5 +486,173 @@ export function cancelWaitingTimeout(sessionId) {
     clearTimeout(waitingTimeouts.get(sessionId));
     waitingTimeouts.delete(sessionId);
     console.log(`✅ WAITING timeout cancelled for session ${sessionId} - operator accepted`);
+  }
+}
+
+/**
+ * v2.3.4: Start user inactivity check
+ * Called when user sends message (reset timer each message)
+ * After 5 min of inactivity: sends presence check to user
+ * If user doesn't respond: auto-close after another 5 min (10 min total)
+ */
+export function startUserInactivityCheck(sessionId, io) {
+  // Cancel existing timers first
+  cancelUserInactivityCheck(sessionId);
+
+  const WARNING_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+  console.log(`⏱️  Starting user inactivity check for session ${sessionId} (5 min warning)`);
+
+  const warningTimeoutId = setTimeout(async () => {
+    console.log(`⚠️  User inactive for 5 minutes in session ${sessionId} - sending presence check`);
+
+    try {
+      // Check if session is still WITH_OPERATOR
+      const session = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          status: true,
+          operatorId: true,
+          userName: true,
+          operator: {
+            select: { id: true, name: true }
+          }
+        },
+      });
+
+      if (!session || session.status !== 'WITH_OPERATOR') {
+        console.log(`ℹ️  Session ${sessionId} no longer active, skipping presence check`);
+        userInactivityWarningTimeouts.delete(sessionId);
+        return;
+      }
+
+      // Notify USER: "Sei ancora qui?" with countdown and buttons
+      io.to(`chat_${sessionId}`).emit('user_presence_check', {
+        sessionId: sessionId,
+        message: 'Sei ancora qui? Hai ancora bisogno di aiuto?',
+        warningTime: 5, // minutes until auto-close
+        countdown: 300, // seconds until auto-close
+        timestamp: new Date().toISOString(),
+      });
+
+      // Notify OPERATOR: User is inactive, presence check sent
+      if (session.operatorId) {
+        io.to(`operator_${session.operatorId}`).emit('user_inactivity_warning', {
+          sessionId: sessionId,
+          userName: session.userName || 'Utente',
+          message: `${session.userName || 'L\'utente'} è inattivo da 5 minuti. Gli è stato chiesto se è ancora presente.`,
+          countdown: 300, // seconds until auto-close
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Start final timeout (another 5 minutes)
+      startUserInactivityFinalTimeout(sessionId, io);
+
+      // Clean up warning timeout
+      userInactivityWarningTimeouts.delete(sessionId);
+    } catch (error) {
+      console.error(`❌ Error handling user inactivity warning for session ${sessionId}:`, error);
+    }
+  }, WARNING_TIMEOUT);
+
+  // Store timeout ID
+  userInactivityWarningTimeouts.set(sessionId, warningTimeoutId);
+}
+
+/**
+ * v2.3.4: Start final timeout after presence check sent
+ * If user doesn't respond within 5 more minutes, auto-close chat
+ */
+function startUserInactivityFinalTimeout(sessionId, io) {
+  const FINAL_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+  console.log(`⏱️  Starting final inactivity timeout for session ${sessionId} (5 min until auto-close)`);
+
+  const finalTimeoutId = setTimeout(async () => {
+    console.log(`⚠️  User didn't respond to presence check in session ${sessionId} - auto closing`);
+
+    try {
+      // Check if session is still WITH_OPERATOR
+      const session = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          status: true,
+          operatorId: true,
+          userName: true,
+        },
+      });
+
+      if (!session || session.status !== 'WITH_OPERATOR') {
+        console.log(`ℹ️  Session ${sessionId} already closed, skipping auto-close`);
+        userInactivityFinalTimeouts.delete(sessionId);
+        return;
+      }
+
+      // Auto-close session
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: {
+          status: 'CLOSED',
+          closureReason: 'USER_INACTIVITY_TIMEOUT',
+        },
+      });
+
+      console.log(`✅ Auto-closed session ${sessionId} due to user inactivity (10 min total)`);
+
+      // Notify USER: Chat closed due to inactivity
+      io.to(`chat_${sessionId}`).emit('chat_closed_inactivity', {
+        sessionId: sessionId,
+        reason: 'inactivity',
+        message: 'La chat è stata chiusa per inattività. Puoi iniziare una nuova conversazione quando vuoi!',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Notify OPERATOR: Chat auto-closed
+      if (session.operatorId) {
+        io.to(`operator_${session.operatorId}`).emit('chat_auto_closed', {
+          sessionId: sessionId,
+          userName: session.userName || 'Utente',
+          reason: 'L\'utente non ha risposto al controllo di presenza (10 minuti di inattività)',
+          message: 'Chat chiusa automaticamente per inattività utente',
+          timestamp: new Date().toISOString(),
+        });
+
+        // Also emit to dashboard for chat list refresh
+        io.to('dashboard').emit('chat_closed', {
+          sessionId: sessionId,
+        });
+      }
+
+      // Clean up timeout tracking
+      userInactivityFinalTimeouts.delete(sessionId);
+    } catch (error) {
+      console.error(`❌ Error auto-closing session ${sessionId} due to inactivity:`, error);
+    }
+  }, FINAL_TIMEOUT);
+
+  // Store timeout ID
+  userInactivityFinalTimeouts.set(sessionId, finalTimeoutId);
+}
+
+/**
+ * v2.3.4: Cancel user inactivity check
+ * Called when user sends a message (reset the timer)
+ */
+export function cancelUserInactivityCheck(sessionId) {
+  // Cancel warning timeout if exists
+  if (userInactivityWarningTimeouts.has(sessionId)) {
+    clearTimeout(userInactivityWarningTimeouts.get(sessionId));
+    userInactivityWarningTimeouts.delete(sessionId);
+    console.log(`✅ User inactivity warning cancelled for session ${sessionId} - user is active`);
+  }
+
+  // Cancel final timeout if exists
+  if (userInactivityFinalTimeouts.has(sessionId)) {
+    clearTimeout(userInactivityFinalTimeouts.get(sessionId));
+    userInactivityFinalTimeouts.delete(sessionId);
+    console.log(`✅ User inactivity final timeout cancelled for session ${sessionId} - user responded`);
   }
 }

@@ -3,7 +3,7 @@ import { io } from '../server.js';
 import { generateAIResponse } from '../services/openai.service.js';
 import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
-import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout } from '../services/websocket.service.js';
+import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout, startUserInactivityCheck, cancelUserInactivityCheck } from '../services/websocket.service.js';
 
 // Rate limiting: Track message timestamps per session
 // Map<sessionId, timestamp[]>
@@ -653,6 +653,9 @@ export const sendUserMessage = async (req, res) => {
         message: userMessage,
       });
 
+      // v2.3.4: Reset user inactivity timer (user is active)
+      startUserInactivityCheck(sessionId, io);
+
       return res.json({
         success: true,
         data: {
@@ -1030,6 +1033,9 @@ export const operatorIntervene = async (req, res) => {
     // Start operator response timeout
     startOperatorResponseTimeout(sessionId, io);
 
+    // v2.3.4: Start user inactivity check (5 min warning, 10 min total)
+    startUserInactivityCheck(sessionId, io);
+
     res.json({
       success: true,
       data: {
@@ -1198,6 +1204,9 @@ export const acceptOperator = async (req, res) => {
 
     // Start operator response timeout (10 minutes)
     startOperatorResponseTimeout(sessionId, io);
+
+    // v2.3.4: Start user inactivity check (5 min warning, 10 min total)
+    startUserInactivityCheck(sessionId, io);
 
     res.json({
       success: true,
