@@ -1,7 +1,7 @@
 # 🏗️ LUCINE CHATBOT - SYSTEM ARCHITECTURE
 
-**Last Updated:** 31 Ottobre 2025 (CSRF Protection Added)
-**Version:** 2.2.0
+**Last Updated:** 2 Novembre 2025 (Security & Performance Enhancements)
+**Version:** 2.3.0
 **Status:** ✅ Production Ready
 
 ---
@@ -349,6 +349,7 @@ socket.on('user_disconnected', { sessionId })  // v2.1
 socket.on('chat_timeout_cancelled', { sessionId, message })  // v2.1
 socket.on('chat_auto_closed', { sessionId, reason })  // v2.1
 socket.on('user_spam_detected', { sessionId, messageCount, userName })  // v2.1
+socket.on('ai_chat_updated', { sessionId, userName, lastMessage, timestamp, messageCount })  // v2.3
 ```
 
 #### Ticket Events
@@ -667,12 +668,22 @@ export interface Ticket {
 - Auto-send when connection restored
 - Max 5 reconnect attempts
 
-### **Security** (v2.2)
-- **CSRF Protection:** Double-submit cookie pattern (csrf-csrf) on all operator POST/PUT/DELETE endpoints
-- **API Rate Limiting:** 100 req/min per IP (express-rate-limit)
-- **Security Headers:** helmet.js (HSTS, X-Frame-Options, etc.)
-- **Race Condition Fix:** Atomic accept operation
-- **XSS Protection:** Verified secure (HTML escaping)
+### **Security** (v2.3)
+- **CSRF Protection:** Double-submit cookie pattern (csrf-csrf) on all operator POST/PUT/DELETE endpoints (v2.2)
+- **API Rate Limiting:** 100 req/min per IP (express-rate-limit) (v2.2)
+- **Security Headers:** helmet.js (HSTS, X-Frame-Options, etc.) (v2.2)
+- **Race Condition Fix:** Atomic accept operation (v2.2)
+- **XSS Protection:** Verified secure (HTML escaping) (v2.2)
+- **Encryption at Rest:** AES-256-GCM for sensitive settings (API keys, passwords, tokens) (v2.3)
+  - Auto-detection of sensitive keys (password, secret, token, apikey)
+  - PBKDF2 key derivation (100,000 iterations)
+  - Format: `iv:authTag:encrypted` for authenticated encryption
+  - Backward compatible with existing plain text values
+  - Module: `src/utils/encryption.js`
+- **Access Control:** Role-based access (ADMIN-only routes) (v2.3)
+  - System Status page restricted to ADMIN role
+  - Health endpoints protected with `requireAdmin` middleware
+  - "Accesso Negato" UI for unauthorized access
 
 ---
 

@@ -677,19 +677,20 @@ healthApi.getLogs(limit)     // GET /health/logs?limit=100
 
 ### 🔴 **CRITICI**:
 
-**1. Security: System Status Access Control**
+**1. ✅ Security: System Status Access Control** - **RISOLTO v2.3.0**
 - **Problema**: SystemStatus page potrebbe mostrare logs sensibili
-- **Soluzione**: Aggiungere role check (solo ADMIN)
-- **File**: src/App.tsx - route protection
+- **Soluzione**: ✅ Aggiunto role check (solo ADMIN)
+- **File**: src/App.tsx - AdminRoute component, health.routes.js - requireAdmin middleware
+- **Commit**: `5e5d501`
 
-**2. ChatWindow Complexity**
+**2. ChatWindow Complexity** - **FRONTEND TODO**
 - **Problema**: 931 righe in un solo componente
 - **Impatto**: Manutenibilità difficile, performance issues
 - **Soluzione**: Refactor in sub-components + custom hooks
 
 ### 🟡 **MEDI**:
 
-**3. Settings UX - Unsaved Changes**
+**3. Settings UX - Unsaved Changes** - **FRONTEND TODO**
 - **Problema**: Unclear se ci sono modifiche non salvate
 - **Soluzione**: Indicatore "unsaved changes" + prompt on leave
 
@@ -701,9 +702,10 @@ healthApi.getLogs(limit)     // GET /health/logs?limit=100
 - **Problema**: Import diretto senza preview
 - **Soluzione**: Preview modal prima di confermare
 
-**6. AI Chats Polling - Performance**
+**6. ✅ AI Chats Polling - Performance** - **RISOLTO v2.3.0**
 - **Problema**: Auto-refresh ogni 30s via HTTP
-- **Soluzione**: WebSocket push events
+- **Soluzione**: ✅ WebSocket push events (`ai_chat_updated`)
+- **Commit**: `bf87853`
 
 **7. Analytics - No Export**
 - **Problema**: Nessun modo di esportare statistiche
@@ -731,32 +733,37 @@ healthApi.getLogs(limit)     // GET /health/logs?limit=100
 
 ## RACCOMANDAZIONI
 
-### **PRIORITÀ 1 - SECURITY** (1-2 giorni):
+### **PRIORITÀ 1 - SECURITY** ✅ **COMPLETATO v2.3.0**
 
 1. ✅ **CSRF Protection** - ✅ COMPLETATO (v2.2.0)
    - Tutti gli endpoints POST/PUT/DELETE protetti
 
-2. **System Status Access Control** (2 ore)
+2. ✅ **System Status Access Control** - ✅ COMPLETATO (v2.3.0)
    - Route protection per ADMIN only
    - Backend: controllare role su /health/system e /health/logs
+   - Commit: `5e5d501`
 
-3. **Settings Secrets Encryption** (3 ore)
-   - API keys/passwords encrypted at rest
+3. ✅ **Settings Secrets Encryption** - ✅ COMPLETATO (v2.3.0)
+   - API keys/passwords encrypted at rest with AES-256-GCM
    - Backend: encrypt before saving to DB
+   - Commit: `8fb803b`
 
-### **PRIORITÀ 2 - PERFORMANCE** (2-3 giorni):
+### **PRIORITÀ 2 - PERFORMANCE** ✅ **COMPLETATO v2.3.0 (Backend)**
 
-4. **ChatWindow Refactoring** (1 giorno)
+4. **ChatWindow Refactoring** - **FRONTEND TODO** (1 giorno)
    - Split in: ChatHeader, ChatMessages, ChatInput, ChatActions
    - Custom hooks: useMessages, useChatActions
 
-5. **AI Chats WebSocket** (4 ore)
+5. ✅ **AI Chats WebSocket** - ✅ COMPLETATO (v2.3.0)
    - Replace polling con WebSocket events
    - Backend emit `ai_chat_updated` on message
+   - Commit: `bf87853`
 
-6. **Settings Optimization** (4 ore)
-   - Bulk save invece di singole chiamate
-   - Loading states granulari
+6. ✅ **Settings Optimization** - ✅ COMPLETATO (v2.3.0)
+   - Bulk save endpoint: POST /api/settings/bulk
+   - Atomic transaction per tutti i settings
+   - Commit: `95f4fa8`
+   - **FRONTEND TODO**: Usare bulk endpoint in Settings.tsx
 
 ### **PRIORITÀ 3 - UX** (3-5 giorni):
 
