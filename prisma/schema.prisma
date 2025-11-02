@@ -216,6 +216,7 @@ model ChatSession {
   updatedAt               DateTime @updatedAt
   lastMessageAt           DateTime @default(now())
   closedAt                DateTime?
+  closureReason           String?      // v2.3.4: Reason for chat closure (USER_DISCONNECTED_TIMEOUT, OPERATOR_TIMEOUT, USER_INACTIVITY_TIMEOUT, MANUAL, CONVERTED_TO_TICKET)
 
   // Relations
   messagesNew             Message[]    // New Message table (transitioning from JSON)
