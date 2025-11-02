@@ -1,6 +1,7 @@
 import { prisma } from '../server.js';
 import { emailService } from '../services/email.service.js';
 import { twilioService } from '../services/twilio.service.js';
+import { encrypt, decrypt, shouldEncrypt } from '../utils/encryption.js';
 
 /**
  * Get all system settings
@@ -18,9 +19,15 @@ export const getSettings = async (req, res) => {
       orderBy: { key: 'asc' },
     });
 
+    // Decrypt sensitive settings before sending
+    const decryptedSettings = settings.map(setting => ({
+      ...setting,
+      value: shouldEncrypt(setting.key) ? decrypt(setting.value) : setting.value,
+    }));
+
     res.json({
       success: true,
-      data: { settings },
+      data: { settings: decryptedSettings },
     });
   } catch (error) {
     console.error('Get settings error:', error);
@@ -48,9 +55,15 @@ export const getSetting = async (req, res) => {
       });
     }
 
+    // Decrypt sensitive setting before sending
+    const decryptedSetting = {
+      ...setting,
+      value: shouldEncrypt(setting.key) ? decrypt(setting.value) : setting.value,
+    };
+
     res.json({
       success: true,
-      data: setting,
+      data: decryptedSetting,
     });
   } catch (error) {
     console.error('Get setting error:', error);
@@ -87,18 +100,27 @@ export const updateSetting = async (req, res) => {
       });
     }
 
+    // Encrypt sensitive value before saving
+    const valueToSave = shouldEncrypt(key) ? encrypt(value) : value;
+
     // Update setting
     const updated = await prisma.systemSettings.update({
       where: { key },
       data: {
-        value,
+        value: valueToSave,
         updatedBy: req.operator.id, // Track who updated
       },
     });
 
+    // Decrypt before sending response
+    const decryptedUpdated = {
+      ...updated,
+      value: shouldEncrypt(key) ? decrypt(updated.value) : updated.value,
+    };
+
     res.json({
       success: true,
-      data: updated,
+      data: decryptedUpdated,
       message: 'Setting updated successfully',
     });
   } catch (error) {
@@ -124,26 +146,35 @@ export const upsertSetting = async (req, res) => {
       });
     }
 
+    // Encrypt sensitive value before saving
+    const valueToSave = shouldEncrypt(key) ? encrypt(value) : value;
+
     const setting = await prisma.systemSettings.upsert({
       where: { key },
       update: {
-        value,
+        value: valueToSave,
         ...(description && { description }),
         ...(category && { category }),
         updatedBy: req.operator.id,
       },
       create: {
         key,
-        value,
+        value: valueToSave,
         description,
         category,
         updatedBy: req.operator.id,
       },
     });
 
+    // Decrypt before sending response
+    const decryptedSetting = {
+      ...setting,
+      value: shouldEncrypt(key) ? decrypt(setting.value) : setting.value,
+    };
+
     res.json({
       success: true,
-      data: setting,
+      data: decryptedSetting,
       message: 'Setting saved successfully',
     });
   } catch (error) {
