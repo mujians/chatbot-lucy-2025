@@ -644,6 +644,16 @@ export const sendUserMessage = async (req, res) => {
       suggestOperator: result.messages[1].aiSuggestOperator,
     };
 
+    // P2.2: Emit WebSocket event to notify dashboard of AI chat activity
+    // Replaces 30-second HTTP polling with real-time updates
+    io.to('dashboard').emit('ai_chat_updated', {
+      sessionId: sessionId,
+      userName: fullSession.userName || 'Utente',
+      lastMessage: aiMessage.content.substring(0, 100),
+      timestamp: aiMessage.timestamp,
+      messageCount: result.messages.length,
+    });
+
     res.json({
       success: true,
       data: {
