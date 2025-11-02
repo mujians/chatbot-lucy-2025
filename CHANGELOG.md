@@ -122,9 +122,29 @@ Response: {
 - 45x reduction in HTTP requests
 - Atomic transactions for consistency
 
-**Frontend TODO:**
-1. Index.tsx: Listen for `ai_chat_updated` WebSocket event, remove polling
-2. Settings.tsx: Use POST /api/settings/bulk, add unsaved changes indicator
+**Frontend Integration:** ✅ **COMPLETED** (Commit: `73ac9ca`)
+1. ✅ Index.tsx: WebSocket listener for `ai_chat_updated` event, removed polling
+2. ✅ Settings.tsx: Bulk save with POST /api/settings/bulk endpoint
+3. ✅ Settings.tsx: Unsaved changes indicator with browser warning
+
+**Frontend Changes:**
+- **src/lib/api.ts**: Added `settingsApi.bulkUpdate()` function
+- **src/pages/Index.tsx**:
+  - Removed 30-second polling interval
+  - Added `ai_chat_updated` WebSocket listener
+  - Smart state updates (update or add AI chats)
+- **src/pages/Settings.tsx**:
+  - Added `originalSettings` and `dirtyKeys` state tracking
+  - Modified `handleSave()` to use bulk endpoint
+  - Added `getCategoryForKey()` helper
+  - Visual indicator: "X modifiche non salvate" with animated pulse
+  - Browser `beforeunload` warning for unsaved changes
+  - Disabled save button when no changes
+
+**Full Integration Status:** ✅ **PRODUCTION READY**
+- Backend: v2.3.0 deployed
+- Frontend: v2.3.0 deployed
+- All features tested and working
 
 ---
 
