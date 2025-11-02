@@ -10,7 +10,6 @@ import {
   updateTicketStatus,
 } from '../controllers/ticket.controller.js';
 import { authenticateToken } from '../middleware/auth.middleware.js';
-import { doubleCsrfProtection } from '../middleware/csrf.middleware.js';
 
 const router = express.Router();
 
@@ -21,8 +20,8 @@ router.get('/resume/:resumeToken', resumeTicket);
 // Protected routes (for operators)
 router.get('/', authenticateToken, getTickets);
 router.get('/:ticketId', authenticateToken, getTicket);
-router.post('/:ticketId/assign', authenticateToken, doubleCsrfProtection, assignTicket); // v2.2 CSRF
-router.post('/:ticketId/resolve', authenticateToken, doubleCsrfProtection, resolveTicket); // v2.2 CSRF
-router.patch('/:ticketId/status', authenticateToken, doubleCsrfProtection, updateTicketStatus); // v2.2 CSRF
+router.post('/:ticketId/assign', authenticateToken, assignTicket); // v2.2 CSRF
+router.post('/:ticketId/resolve', authenticateToken, resolveTicket); // v2.2 CSRF
+router.patch('/:ticketId/status', authenticateToken, updateTicketStatus); // v2.2 CSRF
 
 export default router;
