@@ -95,11 +95,32 @@ app.get('/api', (req, res) => {
 
 // CSRF Token endpoint (v2.2)
 app.get('/api/csrf-token', (req, res) => {
-  const csrfToken = generateToken(req, res);
-  res.json({
-    success: true,
-    token: csrfToken,
-  });
+  try {
+    console.log('🔑 Generating CSRF token...');
+    console.log('Environment:', config.nodeEnv);
+    console.log('JWT Secret exists:', !!config.jwtSecret);
+
+    const csrfToken = generateToken(req, res);
+
+    console.log('✅ CSRF token generated:', csrfToken ? 'yes' : 'no');
+    console.log('Token length:', csrfToken?.length);
+
+    res.json({
+      success: true,
+      token: csrfToken,
+    });
+  } catch (error) {
+    console.error('❌ CSRF token generation error:', error);
+    console.error('Error stack:', error.stack);
+
+    res.status(500).json({
+      success: false,
+      error: {
+        message: 'Failed to generate CSRF token',
+        details: config.nodeEnv === 'development' ? error.message : undefined,
+      },
+    });
+  }
 });
 
 // Debug endpoint to check CSRF token and cookies (v2.3.1)
