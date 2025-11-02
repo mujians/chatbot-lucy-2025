@@ -186,6 +186,78 @@ export const upsertSetting = async (req, res) => {
 };
 
 /**
+ * Bulk update/create settings (P2.3 optimization)
+ * POST /api/settings/bulk
+ * Body: { settings: [{ key, value, description?, category? }] }
+ */
+export const bulkUpdateSettings = async (req, res) => {
+  try {
+    const { settings } = req.body;
+
+    if (!Array.isArray(settings) || settings.length === 0) {
+      return res.status(400).json({
+        error: { message: 'Settings array is required and must not be empty' },
+      });
+    }
+
+    // Validate each setting has key and value
+    for (const setting of settings) {
+      if (!setting.key || setting.value === undefined) {
+        return res.status(400).json({
+          error: { message: 'Each setting must have key and value' },
+        });
+      }
+    }
+
+    // Use transaction to update all settings atomically
+    const results = await prisma.$transaction(async (tx) => {
+      const updatedSettings = [];
+
+      for (const setting of settings) {
+        // Encrypt sensitive value before saving
+        const valueToSave = shouldEncrypt(setting.key) ? encrypt(setting.value) : setting.value;
+
+        const updated = await tx.systemSettings.upsert({
+          where: { key: setting.key },
+          update: {
+            value: valueToSave,
+            ...(setting.description && { description: setting.description }),
+            ...(setting.category && { category: setting.category }),
+            updatedBy: req.operator.id,
+          },
+          create: {
+            key: setting.key,
+            value: valueToSave,
+            description: setting.description,
+            category: setting.category,
+            updatedBy: req.operator.id,
+          },
+        });
+
+        // Decrypt before adding to results
+        updatedSettings.push({
+          ...updated,
+          value: shouldEncrypt(setting.key) ? decrypt(updated.value) : updated.value,
+        });
+      }
+
+      return updatedSettings;
+    });
+
+    res.json({
+      success: true,
+      data: { settings: results },
+      message: `${results.length} settings updated successfully`,
+    });
+  } catch (error) {
+    console.error('Bulk update settings error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
  * Delete setting
  * DELETE /api/settings/:key
  */

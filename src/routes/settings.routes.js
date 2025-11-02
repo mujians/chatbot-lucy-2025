@@ -5,6 +5,7 @@ import {
   updateSetting,
   upsertSetting,
   deleteSetting,
+  bulkUpdateSettings,
   getPublicSettings,
   testEmailConnection,
   testWhatsAppConnection,
@@ -19,6 +20,9 @@ router.get('/public', getPublicSettings);
 // Test connection endpoints (require auth)
 router.post('/test-email', authenticateToken, testEmailConnection);
 router.post('/test-whatsapp', authenticateToken, testWhatsAppConnection);
+
+// P2.3: Bulk update endpoint - must be BEFORE /:key to avoid matching "bulk" as a key
+router.post('/bulk', authenticateToken, bulkUpdateSettings);
 
 // All settings routes require authentication (ADMIN only ideally)
 // For now, all authenticated operators can view, only updates should be restricted
