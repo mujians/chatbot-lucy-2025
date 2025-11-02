@@ -1490,8 +1490,66 @@ export const closeSession = async (req, res) => {
 };
 
 /**
+ * v2.3.4-ux: Calculate urgency score for intelligent sorting
+ * Higher score = more urgent = shown first
+ */
+function calculateUrgencyScore(session) {
+  let score = 0;
+  const now = Date.now();
+  const lastMessageTime = new Date(session.lastMessageAt).getTime();
+
+  // 1. WAITING status = TOP PRIORITY (user in queue)
+  if (session.status === 'WAITING') {
+    score += 1000;
+    // Longer wait = more urgent
+    const waitingMinutes = (now - lastMessageTime) / 60000;
+    score += waitingMinutes * 10;
+  }
+
+  // 2. Unread messages = HIGH PRIORITY (operator needs to respond)
+  if (session.unreadMessageCount > 0) {
+    score += 500;
+    score += session.unreadMessageCount * 50;
+
+    // Messages waiting longer = more urgent
+    const unreadMinutes = (now - lastMessageTime) / 60000;
+    score += unreadMinutes * 5;
+  }
+
+  // 3. WITH_OPERATOR = ACTIVE (keep visible but lower than unread)
+  if (session.status === 'WITH_OPERATOR') {
+    score += 300;
+
+    // If no unread but inactive, still somewhat urgent
+    if (session.unreadMessageCount === 0) {
+      const inactiveMinutes = (now - lastMessageTime) / 60000;
+      if (inactiveMinutes > 5) {
+        score += inactiveMinutes * 2;
+      }
+    }
+  }
+
+  // 4. Recent activity bonus (anything in last hour)
+  const hoursSinceLastMessage = (now - lastMessageTime) / 3600000;
+  if (hoursSinceLastMessage < 1) {
+    score += (1 - hoursSinceLastMessage) * 50;
+  }
+
+  // 5. Penalty for old messages (decay over time)
+  score -= hoursSinceLastMessage * 10;
+
+  // 6. Flagged chats get small boost
+  if (session.isFlagged) {
+    score += 50;
+  }
+
+  return Math.max(0, score); // Never negative
+}
+
+/**
  * Get all chat sessions (for operators)
  * GET /api/chat/sessions?search=keyword&status=ACTIVE&isArchived=false&isFlagged=true&dateFrom=...&dateTo=...
+ * v2.3.4-ux: Now with intelligent urgency-based sorting
  */
 export const getSessions = async (req, res) => {
   try {
@@ -1572,9 +1630,9 @@ export const getSessions = async (req, res) => {
     });
 
     // BUG #6: Convert messagesNew to legacy format for frontend compatibility
-    const sessionsWithMessages = sessions.map((session) => ({
-      ...session,
-      messages: session.messagesNew.map(msg => ({
+    // v2.3.4-ux: Add urgencyScore and lastMessage for UI
+    const sessionsWithMessages = sessions.map((session) => {
+      const messages = session.messagesNew.map(msg => ({
         id: msg.id,
         type: msg.type.toLowerCase(),
         content: msg.content,
@@ -1591,9 +1649,23 @@ export const getSessions = async (req, res) => {
             size: msg.attachmentSize,
           },
         }),
-      })),
-      messagesNew: undefined, // Remove from response
-    }));
+      }));
+
+      // Get last message for preview
+      const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+
+      return {
+        ...session,
+        messages,
+        lastMessage, // For UI preview
+        urgencyScore: calculateUrgencyScore(session), // For intelligent sorting
+        messagesNew: undefined, // Remove from response
+      };
+    });
+
+    // v2.3.4-ux: Sort by urgencyScore instead of lastMessageAt
+    // Higher score = more urgent = shown first
+    sessionsWithMessages.sort((a, b) => b.urgencyScore - a.urgencyScore);
 
     res.json({
       success: true,
