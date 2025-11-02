@@ -273,18 +273,25 @@ T=10s+: Se ancora offline → emit operator_disconnected
 
 ---
 
-### 📌 **ISSUE #6: Operatore Non Risponde - Timeout**
-**Status**: 🟢 TODO
-**Effort**: 25 min
+### ✅ **ISSUE #6: Operatore Non Risponde - Timeout**
+**Status**: ✅ ALREADY IMPLEMENTED (Verified 2 Novembre 2025)
+**Effort**: N/A (già presente)
 
 **Scenario**:
 - Operatore accetta chat
 - Non scrive mai (10+ minuti)
 - Utente aspetta
 
-**Soluzione**:
-- Timeout 8-10 minuti dall'accettazione
-- Se operatore non ha inviato almeno 1 messaggio → "Operatore non risponde" + recovery
+**Soluzione Implementata**:
+- ✅ Timeout 10 minuti dall'accettazione (startOperatorResponseTimeout)
+- ✅ Se operatore non ha inviato almeno 1 messaggio → chat chiusa
+- ✅ Emette `operator_not_responding` a utente
+- ✅ Emette `chat_timeout_cancelled` a operatore
+- ✅ Status: CLOSED con closureReason: 'OPERATOR_TIMEOUT'
+
+**File Implementati**:
+- `src/services/websocket.service.js` (lines 313-389)
+- `src/controllers/chat.controller.js` (chiamate a startOperatorResponseTimeout)
 
 ---
 
@@ -316,17 +323,95 @@ T=10s+: Se ancora offline → emit operator_disconnected
 
 ---
 
-### 📌 **ISSUE #9: Utente Disconnette Durante Chat**
-**Status**: 🟢 TODO
-**Effort**: 20 min
+### ✅ **ISSUE #9: Utente Disconnette Durante Chat**
+**Status**: ✅ ALREADY IMPLEMENTED (Verified 2 Novembre 2025)
+**Effort**: N/A (già presente)
 
 **Problema**:
 - Utente chiude widget/tab
 - Operatore non sa che utente se n'è andato
 
-**Soluzione**:
-- Backend rileva user disconnect
-- Notifica operatore "Utente disconnesso"
+**Soluzione Implementata**:
+- ✅ Backend rileva user disconnect tramite WebSocket
+- ✅ Notifica operatore con `user_disconnected` event
+- ✅ Timeout di 5 minuti per auto-close
+- ✅ Se utente riconnette entro 5 min → timeout cancellato
+- ✅ Se timeout scade → chat chiusa con USER_DISCONNECTED_TIMEOUT
+- ✅ Emette `chat_auto_closed` a operatore
+
+**File Implementati**:
+- `src/services/websocket.service.js` (lines 210-301)
+- Listener: socket.on('disconnect') gestisce user disconnect
+
+---
+
+### ✅ **ISSUE #9B: Utente Inattivo Durante Chat (NEW)**
+**Status**: ✅ IMPLEMENTED (2 Novembre 2025)
+**Severity**: MEDIUM - UX & Resource Management
+**Commits**: Backend `0aca061`, Frontend `eb343fa`
+
+**Problema**:
+- Utente resta connesso ma non scrive (inattivo)
+- Operatore aspetta indefinitamente
+- Nessun feedback a utente o operatore
+- Chat resta aperta sprecando risorse
+
+**Soluzione Implementata**:
+
+**Timeline Progressiva** (v2.3.4):
+1. **T=0**: Operatore joins/User sends message → timer starts
+2. **T=5 min**: User inactive → presence check triggered
+   - Widget: Mostra "⏱️ Sei ancora qui? Hai ancora bisogno di aiuto?" con countdown (5 min)
+   - Widget: Pulsante "Sì sono qui" per confermare presenza
+   - Operator: Riceve notifica in chat + desktop notification
+   - Message: "{userName} è inattivo da 5 minuti. Gli è stato chiesto se è ancora presente."
+3. **T=5-10 min**: User può rispondere
+   - Se user clicca "Sì" o invia messaggio → timer reset a 0
+   - Se user non risponde → continua timeout
+4. **T=10 min**: Auto-close se nessuna risposta
+   - Chat chiusa: status CLOSED, reason USER_INACTIVITY_TIMEOUT
+   - Widget: "La chat è stata chiusa per inattività"
+   - Operator: "Chat chiusa automaticamente per inattività utente"
+   - Dashboard: Chat list refresh automatico
+
+**Eventi WebSocket**:
+- `user_presence_check` → widget (countdown: 300s)
+- `user_inactivity_warning` → operator
+- `chat_closed_inactivity` → widget
+- `chat_auto_closed` → operator (reused)
+- `user_confirmed_presence` → cancella timers + restart
+
+**Backend Files**:
+- `src/services/websocket.service.js`:
+  - userInactivityWarningTimeouts Map
+  - userInactivityFinalTimeouts Map
+  - startUserInactivityCheck() - inizia timer
+  - startUserInactivityFinalTimeout() - secondo timeout
+  - cancelUserInactivityCheck() - cancella timers
+  - Modified user_confirmed_presence listener
+
+- `src/controllers/chat.controller.js`:
+  - sendUserMessage() → reset timer ogni messaggio
+  - acceptOperator() → start timer quando operatore joins
+  - operatorIntervene() → start timer quando operatore interviene
+
+**Frontend Files**:
+- `frontend-dashboard/src/pages/Index.tsx`:
+  - Listener user_inactivity_warning
+  - Listener chat_closed_inactivity
+  - Desktop notifications a operatore
+  - System messages in chat window
+
+**Features**:
+- ✅ Progressive timeout (5 min warning + 5 min grace = 10 min total)
+- ✅ Clear visual feedback con countdown
+- ✅ Interactive buttons per user ("Sì sono qui")
+- ✅ Real-time notifications a entrambi i lati
+- ✅ Auto-reset timer su ogni user activity
+- ✅ Liberazione automatica risorse operatore
+- ✅ Previene chat abbandonate
+
+**Effort**: 60 min (completato)
 
 ---
 
@@ -375,17 +460,23 @@ T=10s+: Se ancora offline → emit operator_disconnected
 
 **🎉 Tutti i blocker critici risolti! Sistema pronto per produzione.**
 
+### **✅ COMPLETATI (2 Novembre 2025)**:
+8. ✅ **ISSUE #6**: Operatore non risponde timeout (N/A) - GIÀ IMPLEMENTATO
+9. ✅ **ISSUE #9**: User disconnect notification (N/A) - GIÀ IMPLEMENTATO
+10. ✅ **ISSUE #9B**: User inactivity presence check (60 min) - IMPLEMENTATO
+
+**🎉 Timeout management completamente implementato!**
+
 ### **NEXT BATCH**:
-8. ISSUE #6: Operatore non risponde timeout (25 min)
-9. ISSUE #9: User disconnect notification (20 min)
-10. ISSUE #7: Session expiry (20 min)
+11. ISSUE #7: Session expiry (20 min)
+12. ISSUE #8: Rate limiting (30 min)
 
-**Tempo totale**: ~1.5 ore
+**Tempo totale**: ~50 min
 
-### **SETTIMANA PROSSIMA**:
-- ISSUE #8: Rate limiting
-- ISSUE #10: Network quality
-- Security checks
+### **FUTURE ENHANCEMENTS**:
+- ISSUE #10: Network quality detection
+- Security audit refresh
+- Performance optimization
 
 ---
 
@@ -400,7 +491,7 @@ T=10s+: Se ancora offline → emit operator_disconnected
 - Backend: Auto-deploy Render on push to main
 - Widget: Auto-sync Shopify on push to main
 
-**Ultima Modifica**: 31 Ottobre 2025 (documentazione aggiornata post-completion)
+**Ultima Modifica**: 2 Novembre 2025 (v2.3.4 - User Inactivity System)
 
 ---
 
@@ -428,3 +519,47 @@ T=10s+: Se ancora offline → emit operator_disconnected
 - `c7ad0e4` - TypeScript fix badge counter
 - `9519f54` - Check operatore online (backend)
 - `1f3a30e` - Check operatore online (widget) + smart actions fix + UX improvements
+
+---
+
+## 🎉 **SESSION SUMMARY - 2 Novembre 2025 (v2.3.4)**
+
+**Focus**: User Inactivity Management & Timeout System Completion
+
+**Features Implemented**:
+1. ✅ Verified ISSUE #6 already implemented (Operator timeout)
+2. ✅ Verified ISSUE #9 already implemented (User disconnect)
+3. ✅ NEW: User inactivity presence check system (ISSUE #9B)
+   - Progressive timeout: 5 min warning + 5 min grace
+   - Widget countdown and interactive buttons
+   - Operator notifications at each stage
+   - Auto-close after 10 min total inactivity
+   - Timer auto-reset on user activity
+
+**Technical Implementation**:
+- Backend: 2 new timeout Maps (warning + final)
+- Backend: 3 exported functions (start, cancel, final)
+- Backend: Modified user_confirmed_presence listener
+- Backend: Integration in sendUserMessage, acceptOperator, operatorIntervene
+- Frontend: 2 new WebSocket listeners
+- Frontend: Desktop notifications for operators
+- Frontend: Auto-refresh chat list on closure
+
+**Quality**:
+- Clear feedback to both sides
+- No silent failures
+- Resource-efficient (Map-based tracking)
+- Prevents abandoned chats
+- Professional UX
+
+**Commits**:
+- Backend: `86a809d` - Name extraction feature
+- Backend: `0aca061` - User inactivity system
+- Frontend: `bc91032` - Name capture UI
+- Frontend: `eb343fa` - Inactivity notifications
+
+**Time Spent**: ~90 min total (verification + implementation)
+**Issues Resolved**: 3 (1 new + 2 verified)
+**Files Modified**: 4 (2 backend + 2 frontend)
+**Lines Added**: ~230
+**WebSocket Events**: 4 new events
