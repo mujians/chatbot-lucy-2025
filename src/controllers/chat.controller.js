@@ -68,54 +68,9 @@ function checkRateLimit(sessionId, session = null) {
 }
 
 /**
- * v2.3.3: Extract user name from message content
- * Detects if a message looks like a name response
- * Returns the extracted name or null
+ * v2.3.5: REMOVED extractUserName function - now using form-based collection
+ * See setUserName() endpoint for new implementation
  */
-function extractUserName(messageContent) {
-  if (!messageContent || typeof messageContent !== 'string') {
-    return null;
-  }
-
-  const trimmed = messageContent.trim();
-
-  // Skip if message is too long (likely not just a name)
-  if (trimmed.length > 50) {
-    return null;
-  }
-
-  // Skip if message contains typical conversation phrases
-  const conversationPhrases = [
-    'ciao', 'salve', 'buongiorno', 'buonasera', 'grazie', 'prego',
-    'aiuto', 'help', 'problema', 'non funziona', 'come', 'cosa',
-    'quando', 'dove', 'perché', 'vorrei', 'ho bisogno', 'mi serve'
-  ];
-
-  const lowerMessage = trimmed.toLowerCase();
-  if (conversationPhrases.some(phrase => lowerMessage.includes(phrase))) {
-    return null;
-  }
-
-  // Common patterns for name responses
-  const namePatterns = [
-    /^(?:mi chiamo|sono|il mio nome è|chiamami)\s+([a-zA-ZÀ-ÿ\s]+)$/i,
-    /^([a-zA-ZÀ-ÿ]+(?:\s+[a-zA-ZÀ-ÿ]+){0,2})$/  // 1-3 words with letters only
-  ];
-
-  for (const pattern of namePatterns) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      const name = match[1] || match[0];
-      // Capitalize first letter of each word
-      return name.trim()
-        .split(/\s+/)
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-    }
-  }
-
-  return null;
-}
 
 /**
  * BUG #6: Create single message in Message table with transaction
@@ -561,34 +516,8 @@ export const sendUserMessage = async (req, res) => {
       });
     }
 
-    // v2.3.3: Extract and save user name if not already set
-    if (!session.userName && session.status === 'WITH_OPERATOR') {
-      const extractedName = extractUserName(message);
-      if (extractedName) {
-        console.log(`📝 Extracted user name: "${extractedName}" from session ${sessionId}`);
-
-        // Update session with userName
-        session = await prisma.chatSession.update({
-          where: { id: sessionId },
-          data: { userName: extractedName },
-          select: {
-            id: true,
-            operatorId: true,
-            userName: true,
-            status: true,
-          },
-        });
-
-        // Notify operator that we captured the name
-        if (session.operatorId) {
-          io.to(`operator_${session.operatorId}`).emit('user_name_captured', {
-            sessionId: sessionId,
-            userName: extractedName,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
-    }
+    // v2.3.5: userName is now collected via dedicated form (see setUserName endpoint)
+    // Removed automatic regex extraction as it was unreliable
 
     // Check rate limit (pass session for spam detection)
     const rateLimit = checkRateLimit(sessionId, session);
@@ -977,15 +906,8 @@ export const operatorIntervene = async (req, res) => {
       }
     );
 
-    // v2.3.3: Send automatic greeting message from operator
-    const greetingMessage = await prisma.message.create({
-      data: {
-        sessionId: sessionId,
-        type: 'OPERATOR',
-        content: `Ciao! Dammi un attimo che controllo la conversazione. Intanto, come ti chiami?`,
-        operatorId: operator.id,
-      },
-    });
+    // v2.3.5: Removed automatic greeting message - now using form-based name collection
+    // The widget will show a form asking for the user's name
 
     // Update operator stats
     await prisma.operator.update({
@@ -1005,19 +927,6 @@ export const operatorIntervene = async (req, res) => {
         type: systemMessage.type,
         content: systemMessage.content,
         timestamp: systemMessage.createdAt,
-      },
-    });
-
-    // v2.3.3: Notify widget: automatic greeting message
-    io.to(`chat_${sessionId}`).emit('operator_message', {
-      sessionId: sessionId,
-      message: {
-        id: greetingMessage.id,
-        type: greetingMessage.type,
-        content: greetingMessage.content,
-        timestamp: greetingMessage.createdAt,
-        operatorId: operator.id,
-        operatorName: operator.name,
       },
     });
 
@@ -1161,28 +1070,8 @@ export const acceptOperator = async (req, res) => {
       },
     });
 
-    // v2.3.3: Send automatic greeting message from operator AFTER widget knows operator joined
-    const greetingMessage = await prisma.message.create({
-      data: {
-        sessionId: sessionId,
-        type: 'OPERATOR',
-        content: `Ciao! Dammi un attimo che controllo la conversazione. Intanto, come ti chiami?`,
-        operatorId: operator.id,
-      },
-    });
-
-    // Notify widget: automatic greeting message (widget is now in operator mode)
-    io.to(`chat_${sessionId}`).emit('operator_message', {
-      sessionId: sessionId,
-      message: {
-        id: greetingMessage.id,
-        type: greetingMessage.type,
-        content: greetingMessage.content,
-        timestamp: greetingMessage.createdAt,
-        operatorId: operator.id,
-        operatorName: operator.name,
-      },
-    });
+    // v2.3.5: Removed automatic greeting message - now using form-based name collection
+    // The widget will show a form asking for the user's name
 
     // Notify dashboard: chat accepted
     io.to('dashboard').emit('chat_accepted', {
@@ -1483,6 +1372,70 @@ export const closeSession = async (req, res) => {
     });
   } catch (error) {
     console.error('Close session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
+ * v2.3.5: Set user name explicitly via form
+ * POST /api/chat/session/:sessionId/set-name
+ */
+export const setUserName = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { userName } = req.body;
+
+    // Validate input
+    if (!userName || typeof userName !== 'string') {
+      return res.status(400).json({
+        error: { message: 'userName is required' },
+      });
+    }
+
+    const trimmedName = userName.trim();
+
+    // Validate name format (2-50 characters, letters and spaces only)
+    if (trimmedName.length < 2 || trimmedName.length > 50) {
+      return res.status(400).json({
+        error: { message: 'Name must be between 2 and 50 characters' },
+      });
+    }
+
+    if (!/^[a-zA-ZÀ-ÿ\s]+$/.test(trimmedName)) {
+      return res.status(400).json({
+        error: { message: 'Name can only contain letters and spaces' },
+      });
+    }
+
+    // Capitalize first letter of each word
+    const formattedName = trimmedName
+      .split(/\s+/)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
+    // Update session
+    const updatedSession = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { userName: formattedName },
+    });
+
+    console.log(`✅ v2.3.5: User name set to "${formattedName}" for session ${sessionId}`);
+
+    // Notify dashboard via WebSocket
+    io.to(`operator_${updatedSession.operatorId}`).emit('user_name_captured', {
+      sessionId: sessionId,
+      userName: formattedName,
+    });
+
+    res.json({
+      success: true,
+      data: { session: updatedSession, userName: formattedName },
+      message: 'User name saved successfully',
+    });
+  } catch (error) {
+    console.error('Set user name error:', error);
     res.status(500).json({
       error: { message: 'Internal server error' },
     });
