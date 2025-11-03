@@ -1443,6 +1443,88 @@ export const setUserName = async (req, res) => {
 };
 
 /**
+ * v2.3.5: ISSUE #10 - User returns to AI from operator chat
+ * POST /api/chat/session/:sessionId/return-to-ai
+ */
+export const returnToAI = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get current session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        status: true,
+        operatorId: true,
+        operator: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    if (session.status !== 'WITH_OPERATOR') {
+      return res.status(400).json({
+        error: { message: 'Session is not with an operator' },
+      });
+    }
+
+    const operatorId = session.operatorId;
+    const operatorName = session.operator?.name || 'Operatore';
+
+    // Update session: return to AI mode
+    const { message: systemMessage } = await createMessage(
+      sessionId,
+      {
+        type: 'SYSTEM',
+        content: `L'utente è tornato all'assistente AI`,
+      },
+      {
+        status: 'ACTIVE',
+        operatorId: null, // Remove operator
+      }
+    );
+
+    console.log(`✅ ISSUE #10: User returned to AI from operator ${operatorName} in session ${sessionId}`);
+
+    // Notify operator that user left
+    if (operatorId) {
+      io.to(`operator_${operatorId}`).emit('user_returned_to_ai', {
+        sessionId: sessionId,
+        message: systemMessage.content,
+        timestamp: systemMessage.createdAt,
+      });
+    }
+
+    // Notify dashboard to refresh chat list
+    io.to('dashboard').emit('chat_returned_to_ai', {
+      sessionId: sessionId,
+      operatorId: operatorId,
+    });
+
+    res.json({
+      success: true,
+      data: { session: { id: sessionId, status: 'ACTIVE' } },
+      message: 'Returned to AI assistant successfully',
+    });
+  } catch (error) {
+    console.error('Return to AI error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
  * v2.3.4-ux: Calculate urgency score for intelligent sorting
  * Higher score = more urgent = shown first
  */

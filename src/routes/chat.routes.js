@@ -11,6 +11,7 @@ import {
   sendOperatorMessage,
   closeSession,
   setUserName,
+  returnToAI,
   reopenSession,
   getSessions,
   deleteSession,
@@ -39,6 +40,7 @@ router.post('/session', createSession);
 router.get('/session/:sessionId', getSession);
 router.post('/session/:sessionId/message', sendUserMessage);
 router.post('/session/:sessionId/set-name', setUserName); // v2.3.5: Form-based name collection
+router.post('/session/:sessionId/return-to-ai', returnToAI); // v2.3.5: ISSUE #10 - User returns to AI
 router.post('/session/:sessionId/request-operator', requestOperator);
 router.post('/session/:sessionId/cancel-operator-request', cancelOperatorRequest);
 router.post('/session/:sessionId/reopen', reopenSession);
