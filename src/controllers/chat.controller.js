@@ -1527,6 +1527,83 @@ export const returnToAI = async (req, res) => {
 };
 
 /**
+ * v2.3.7: End conversation (user-initiated session termination)
+ * POST /api/chat/session/:sessionId/end-conversation
+ * Allows user to completely end current conversation and start fresh
+ */
+export const endConversation = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        status: true,
+        operatorId: true,
+        operator: {
+          select: { id: true, name: true }
+        }
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    const wasWithOperator = session.status === 'WITH_OPERATOR';
+    const operatorId = session.operatorId;
+
+    // Update session: mark as closed
+    await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        status: 'CLOSED',
+        closureReason: 'USER_ENDED',
+        closedAt: new Date(),
+      },
+    });
+
+    console.log(`✅ User ended conversation for session ${sessionId}`);
+
+    // If was with operator, notify them
+    if (wasWithOperator && operatorId) {
+      // Notify operator via their room
+      io.to(`operator_${operatorId}`).emit('conversation_ended', {
+        sessionId: sessionId,
+        message: 'L\'utente ha terminato la conversazione',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Also notify dashboard
+      io.to('dashboard').emit('chat_closed', {
+        sessionId: sessionId,
+        reason: 'USER_ENDED',
+      });
+
+      console.log(`📤 Notified operator ${session.operator?.name} that user ended conversation`);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: sessionId,
+        status: 'CLOSED',
+        message: 'Conversation ended successfully'
+      },
+    });
+  } catch (error) {
+    console.error('End conversation error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
  * v2.3.4-ux: Calculate urgency score for intelligent sorting
  * Higher score = more urgent = shown first
  */
