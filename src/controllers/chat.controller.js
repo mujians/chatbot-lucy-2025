@@ -1080,10 +1080,12 @@ export const acceptOperator = async (req, res) => {
       operatorName: operator.name,
     });
 
-    // Notify OTHER operators: this chat is now taken
+    // v2.3.6: Notify OTHER operators: this chat is now taken
+    // Include operatorId so receiving operators can filter
     io.to('dashboard').emit('chat_request_cancelled', {
       sessionId: sessionId,
       reason: 'accepted_by_another_operator',
+      acceptedBy: operator.id, // NEW: Who accepted it
     });
 
     console.log(`✅ Operator ${operator.name} accepted chat ${sessionId}`);
