@@ -388,10 +388,289 @@ Tags and Internal Notes appear in:
 
 ---
 
+## 🔴 **NEW CRITICAL ISSUES - 3 Novembre 2025**
+
+### **ISSUE #9: userName Not Displayed in Dashboard After Extraction**
+**Severity**: CRITICAL - Feature Not Working
+**Current State**: ❌ Name extracted but not shown in dashboard
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+```
+Backend flow (v2.3.3):
+1. ✅ Operator joins → asks "come ti chiami?"
+2. ✅ extractUserName() detects name from user response
+3. ✅ Session.userName updated in database
+4. ✅ user_name_captured event emitted
+5. ❌ Dashboard ChatListPanel still shows "Visitatore" not real name!
+```
+
+**Root Cause**:
+- Backend emette `user_name_captured` a `operator_${operatorId}` (line 584)
+- Frontend deve ricevere evento e aggiornare chat list
+- Oppure: userName non viene passato nel getSessions response
+
+**Debug Needed**:
+```bash
+# Check if userName in database
+SELECT id, "userName", status FROM "ChatSession" WHERE "userName" IS NOT NULL;
+
+# Check if getSessions returns userName
+GET /api/chat/sessions → check response.data[].userName
+```
+
+**Solution**:
+1. Verificare getSessions include userName nel response
+2. Frontend listener per user_name_captured → aggiorna chats state
+3. ChatListPanel usa userName se disponibile
+
+**Files to Check**:
+- `backend/src/controllers/chat.controller.js` (getSessions - line ~1500)
+- `frontend/src/pages/Index.tsx` (user_name_captured listener)
+- `frontend/src/components/dashboard/ChatListPanel.tsx` (display userName)
+
+**Effort**: 1 hour
+
+---
+
+### **ISSUE #10: User Cannot Close Chat and Return to AI**
+**Severity**: HIGH - Missing Feature
+**Current State**: ❌ User stuck with operator, no exit option
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+```
+Current behavior:
+- User in chat WITH_OPERATOR
+- Only timeout can end chat (10 min inactivity)
+- User CANNOT manually close and go back to AI
+- User CANNOT close and leave
+```
+
+**Expected Behavior**:
+User should have button to:
+1. **Close chat and return to AI** (common case)
+2. **Close chat and end** (less common)
+
+**Questions to Answer**:
+- When user closes → what happens to operator?
+- Notification to operator?
+- Session status change (WITH_OPERATOR → ACTIVE)?
+- closureReason = 'USER_ENDED_CHAT'?
+
+**Solution Needed**:
+```javascript
+// Widget: Add button in chat header or footer
+<button onClick={handleUserCloseChat}>
+  ❌ Termina chat con operatore
+</button>
+
+// When clicked:
+1. Emit user_close_chat event
+2. Backend: Change status WITH_OPERATOR → ACTIVE
+3. Backend: Notify operator with operator_chat_ended
+4. Widget: Show recovery options [Continua con AI] [Chiudi widget]
+```
+
+**Backend Endpoint Needed**:
+```javascript
+POST /api/chat/session/:id/user-close
+// Similar to cancel-operator-request but for WITH_OPERATOR status
+```
+
+**Files to Create/Modify**:
+- `backend/src/controllers/chat.controller.js` (new endpoint userCloseChat)
+- `lucine-minimal/snippets/chatbot-popup.liquid` (close button + handler)
+- `backend/src/services/websocket.service.js` (emit operator_chat_ended)
+- `frontend/src/pages/Index.tsx` (listener operator_chat_ended)
+
+**Effort**: 2 hours
+
+---
+
+### **ISSUE #11: Dashboard Chat List Order Inverted**
+**Severity**: HIGH - Critical UX Bug
+**Current State**: ❌ Old chats at top, new at bottom
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+```
+Expected: Newest/Most urgent chats at TOP
+Actual: Oldest chats at TOP (inverted!)
+```
+
+**Root Cause**:
+```javascript
+// In getSessions (chat.controller.js line ~1668):
+sessionsWithMessages.sort((a, b) => b.urgencyScore - a.urgencyScore);
+// This SHOULD put highest urgency first...
+
+// Or maybe frontend reverses the array?
+```
+
+**Debug**:
+1. Check backend response order (use Postman/Console)
+2. Check frontend doesn't reverse array
+3. Check ChatListPanel map order
+
+**Quick Fix**:
+```javascript
+// If backend is correct, frontend might be reversing:
+.sort((a, b) => a.urgencyScore - b.urgencyScore) // WRONG order
+// Should be:
+.sort((a, b) => b.urgencyScore - a.urgencyScore) // Descending
+```
+
+**Files to Check**:
+- `backend/src/controllers/chat.controller.js` (line ~1668 - sort order)
+- `frontend/src/pages/Index.tsx` (check if array reversed)
+- `frontend/src/components/dashboard/ChatListPanel.tsx` (map order)
+
+**Effort**: 30 min
+
+---
+
+### **ISSUE #12: Chat Window Auto-Scroll Not Working**
+**Severity**: MEDIUM - UX Annoyance
+**Current State**: ❌ Operator must manually scroll to see new messages
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+```
+Expected: When new message arrives → auto-scroll to bottom
+Actual: Scroll stays at current position
+```
+
+**Note**: This was supposedly fixed in commit aab6e33 (ISSUE #1)
+
+**Possible Causes**:
+1. useEffect dependencies wrong
+2. scrollRef.current?.scrollIntoView not working
+3. Radix UI ScrollArea viewport not detected correctly
+4. New message not triggering useEffect
+
+**Debug**:
+```javascript
+// In ChatWindow.tsx - add console.log:
+useEffect(() => {
+  console.log('🔄 Scroll effect triggered, messages count:', messages.length);
+  console.log('📜 Scroll ref:', scrollRef.current);
+  scrollRef.current?.scrollIntoView({ behavior: 'smooth' });
+}, [messages]);
+```
+
+**Files to Check**:
+- `frontend/src/components/ChatWindow.tsx` (scroll useEffect)
+- Check if messages prop actually changes reference
+
+**Effort**: 30 min
+
+---
+
+### **ISSUE #13: Tags Still Visible in Dashboard**
+**Severity**: LOW - Should Have Been Removed
+**Current State**: ❌ Tags still in sidebar bulk actions
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+ISSUE #7 in Phase 2 says:
+> **REMOVE from sidebar**, keep only in ChatWindow
+
+But tags/notes still present in sidebar bulk section!
+
+**Solution**:
+Remove from `frontend/src/pages/Index.tsx`:
+- Tags input/buttons in bulk section
+- Notes textarea/buttons in bulk section
+- Keep only: Archive, Flag, Close, Export, Delete
+
+**Files to Modify**:
+- `frontend/src/pages/Index.tsx` (remove tags/notes bulk UI)
+
+**Effort**: 20 min
+
+---
+
+### **ISSUE #14: Badge Counts Incorrect**
+**Severity**: MEDIUM - Data Inconsistency
+**Current State**: ❌ Conflicting numbers shown
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+```
+Tab badges show:
+🔥 Attive (19) | 🤖 AI (3) | 📦 Chiuse (0)
+
+But below it says:
+"Chat AI attive: 4"
+
+19 vs 4 AI? Numbers don't match!
+```
+
+**Root Cause Analysis Needed**:
+1. What does "Attive" count?
+   - Should be: WAITING + WITH_OPERATOR (NOT ACTIVE)
+2. What does "AI" count?
+   - Should be: ACTIVE (AI-only, no operator)
+3. What does "Chat AI attive: 4" mean?
+   - Different data source?
+
+**Debug**:
+```javascript
+// In Index.tsx - check filter logic:
+const activeChats = chats.filter(c =>
+  (c.status === 'WAITING' || c.status === 'WITH_OPERATOR') && !c.isArchived
+);
+console.log('🔥 Attive count:', activeChats.length);
+
+const aiChats = chats.filter(c =>
+  c.status === 'ACTIVE' && !c.isArchived
+);
+console.log('🤖 AI count:', aiChats.length);
+
+// vs activeAIChats state:
+console.log('Chat AI attive count:', activeAIChats.length);
+```
+
+**Files to Check**:
+- `frontend/src/pages/Index.tsx` (tab badge counts, activeAIChats state)
+
+**Effort**: 1 hour
+
+---
+
+### **ISSUE #15: Manual Priority Box Still Visible**
+**Severity**: LOW - Should Have Been Removed
+**Current State**: ❌ Priority dropdown/box still in UI
+**Reported**: 3 Novembre 2025
+
+**Problem**:
+v2.3.4-ux says:
+> Priority should be AUTOMATIC via urgencyScore
+> No manual priority setting needed
+
+But UI still has priority selector/box!
+
+**Solution**:
+Remove manual priority UI from:
+- ChatWindow (if present)
+- Chat list (if present)
+- Any priority dropdown/selector
+
+Priority is now automatic via urgencyScore, no manual input needed.
+
+**Files to Check**:
+- `frontend/src/pages/Index.tsx` (check for priority UI)
+- `frontend/src/components/dashboard/ChatWindow.tsx` (check for priority selector)
+
+**Effort**: 15 min
+
+---
+
 ## 📝 **NOTES**
 
-**Current Version**: v2.3.4
-**Last Updated**: 2 Novembre 2025
+**Current Version**: v2.3.4-ux
+**Last Updated**: 3 Novembre 2025
 
 **Related Documents**:
 - `CRITICAL_ISSUES_TODO.md` - Previous critical fixes

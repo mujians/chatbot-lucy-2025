@@ -1663,9 +1663,13 @@ export const getSessions = async (req, res) => {
       };
     });
 
-    // v2.3.4-ux: Sort by urgencyScore instead of lastMessageAt
-    // Higher score = more urgent = shown first
-    sessionsWithMessages.sort((a, b) => b.urgencyScore - a.urgencyScore);
+    // v2.3.4-ux: Sort by lastMessageAt (newest first)
+    // Note: urgencyScore still calculated for future features, but primary sort is by recency
+    sessionsWithMessages.sort((a, b) => {
+      const aTime = new Date(a.lastMessageAt).getTime();
+      const bTime = new Date(b.lastMessageAt).getTime();
+      return bTime - aTime; // Newest first
+    });
 
     res.json({
       success: true,
