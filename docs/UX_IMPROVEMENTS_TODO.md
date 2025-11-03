@@ -488,10 +488,12 @@ POST /api/chat/session/:id/user-close
 
 ---
 
-### **ISSUE #11: Dashboard Chat List Order Inverted**
+### **ISSUE #11: Dashboard Chat List Order Inverted** ✅ FIXED
 **Severity**: HIGH - Critical UX Bug
-**Current State**: ❌ Old chats at top, new at bottom
+**Current State**: ✅ FIXED - Now sorted by recency
 **Reported**: 3 Novembre 2025
+**Fixed**: 3 Novembre 2025
+**Commits**: Backend `b7f2272`
 
 **Problem**:
 ```
@@ -527,6 +529,22 @@ sessionsWithMessages.sort((a, b) => b.urgencyScore - a.urgencyScore);
 - `frontend/src/components/dashboard/ChatListPanel.tsx` (map order)
 
 **Effort**: 30 min
+
+**Solution Implemented**:
+Changed sort from urgencyScore to lastMessageAt DESC:
+```javascript
+// Before: urgencyScore gave MORE points to older chats
+sessionsWithMessages.sort((a, b) => b.urgencyScore - a.urgencyScore);
+// Chat WAITING 30 min: 1300 score → first
+// Chat WAITING 1 min: 1010 score → last (WRONG!)
+
+// After: Sort by recency
+sessionsWithMessages.sort((a, b) => {
+  const aTime = new Date(a.lastMessageAt).getTime();
+  const bTime = new Date(b.lastMessageAt).getTime();
+  return bTime - aTime; // Newest first (CORRECT!)
+});
+```
 
 ---
 
@@ -567,10 +585,11 @@ useEffect(() => {
 
 ---
 
-### **ISSUE #13: Tags Still Visible in Dashboard**
+### **ISSUE #13: Tags Still Visible in Dashboard** ✅ VERIFIED
 **Severity**: LOW - Should Have Been Removed
-**Current State**: ❌ Tags still in sidebar bulk actions
+**Current State**: ✅ VERIFIED - Tags only in ChatWindow (as intended)
 **Reported**: 3 Novembre 2025
+**Verified**: 3 Novembre 2025
 
 **Problem**:
 ISSUE #7 in Phase 2 says:
@@ -588,6 +607,10 @@ Remove from `frontend/src/pages/Index.tsx`:
 - `frontend/src/pages/Index.tsx` (remove tags/notes bulk UI)
 
 **Effort**: 20 min
+
+**Verification Result**:
+Tags/notes are NOT in sidebar bulk section - already removed in previous work.
+Tags remain ONLY in ChatWindow where they belong. No action needed.
 
 ---
 
@@ -639,10 +662,12 @@ console.log('Chat AI attive count:', activeAIChats.length);
 
 ---
 
-### **ISSUE #15: Manual Priority Box Still Visible**
+### **ISSUE #15: Manual Priority Box Still Visible** ✅ FIXED
 **Severity**: LOW - Should Have Been Removed
-**Current State**: ❌ Priority dropdown/box still in UI
+**Current State**: ✅ FIXED - Priority selector removed
 **Reported**: 3 Novembre 2025
+**Fixed**: 3 Novembre 2025
+**Commits**: Frontend `4808d21`
 
 **Problem**:
 v2.3.4-ux says:
@@ -664,6 +689,15 @@ Priority is now automatic via urgencyScore, no manual input needed.
 - `frontend/src/components/dashboard/ChatWindow.tsx` (check for priority selector)
 
 **Effort**: 15 min
+
+**Solution Implemented**:
+Removed all priority-related code from ChatWindow.tsx:
+- Removed `priority` state variable
+- Removed `handlePriorityChange()` function
+- Removed Priority dropdown UI (kept Tags section)
+- Removed `setPriority()` call from useEffect
+
+Priority is now fully automatic via urgencyScore calculation!
 
 ---
 
