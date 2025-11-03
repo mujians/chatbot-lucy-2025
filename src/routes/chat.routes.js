@@ -19,8 +19,6 @@ import {
   unflagSession,
   transferSession,
   markMessagesAsRead,
-  updatePriority,
-  updateTags,
   addInternalNote,
   updateInternalNote,
   deleteInternalNote,
@@ -58,10 +56,6 @@ router.post('/sessions/:sessionId/flag', authenticateToken, flagSession);
 router.post('/sessions/:sessionId/unflag', authenticateToken, unflagSession);
 router.post('/sessions/:sessionId/transfer', authenticateToken, transferSession);
 router.post('/sessions/:sessionId/convert-to-ticket', authenticateToken, convertChatToTicket);
-
-// P1.8: Priority and Tags routes - v2.2 CSRF protected
-router.put('/sessions/:sessionId/priority', authenticateToken, updatePriority);
-router.put('/sessions/:sessionId/tags', authenticateToken, updateTags);
 
 // P0.3: Internal Notes routes - v2.2 CSRF protected
 router.post('/sessions/:sessionId/notes', authenticateToken, addInternalNote);
