@@ -243,6 +243,7 @@ model ChatRating {
 
   // Rating data
   rating                  Int         // 1-5 stars
+  chatType                String      @default("OPERATOR") // v2.3.8: LACUNA #5 - AI or OPERATOR
   comment                 String?     @db.Text
 
   // User info (for analytics)

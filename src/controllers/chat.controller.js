@@ -2513,17 +2513,25 @@ export const uploadFile = async (req, res) => {
 /**
  * P1.2: Submit chat rating (CSAT)
  * POST /api/chat/sessions/:sessionId/rating
- * Body: { rating: 1-5, comment?: string }
+ * Body: { rating: 1-5, comment?: string, chatType?: 'AI' | 'OPERATOR' }
+ * v2.3.8: Added chatType for LACUNA #5 (AI rating support)
  */
 export const submitRating = async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { rating, comment } = req.body;
+    const { rating, comment, chatType = 'OPERATOR' } = req.body;
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({
         error: { message: 'Rating must be between 1 and 5' },
+      });
+    }
+
+    // v2.3.8: Validate chatType
+    if (chatType !== 'AI' && chatType !== 'OPERATOR') {
+      return res.status(400).json({
+        error: { message: 'chatType must be either AI or OPERATOR' },
       });
     }
 
@@ -2558,6 +2566,7 @@ export const submitRating = async (req, res) => {
       data: {
         sessionId: sessionId,
         rating: rating,
+        chatType: chatType, // v2.3.8: LACUNA #5 - AI or OPERATOR
         comment: comment || null,
         userId: session.userId || null,
         userEmail: session.userEmail || null,
@@ -2566,7 +2575,7 @@ export const submitRating = async (req, res) => {
       },
     });
 
-    console.log(`✅ P1.2: Rating ${rating}⭐ submitted for session ${sessionId}`);
+    console.log(`✅ P1.2: Rating ${rating}⭐ (${chatType}) submitted for session ${sessionId}`);
 
     res.json({
       success: true,
@@ -2620,6 +2629,24 @@ export const getRatingsAnalytics = async (req, res) => {
       ? ratings.reduce((sum, r) => sum + r.rating, 0) / totalRatings
       : 0;
 
+    // v2.3.8: LACUNA #5 - Stats by chatType (AI vs OPERATOR)
+    const aiRatings = ratings.filter((r) => r.chatType === 'AI');
+    const operatorRatings = ratings.filter((r) => r.chatType === 'OPERATOR');
+
+    const aiStats = {
+      totalRatings: aiRatings.length,
+      averageRating: aiRatings.length > 0
+        ? aiRatings.reduce((sum, r) => sum + r.rating, 0) / aiRatings.length
+        : 0,
+    };
+
+    const operatorOnlyStats = {
+      totalRatings: operatorRatings.length,
+      averageRating: operatorRatings.length > 0
+        ? operatorRatings.reduce((sum, r) => sum + r.rating, 0) / operatorRatings.length
+        : 0,
+    };
+
     // Rating distribution
     const distribution = {
       1: ratings.filter((r) => r.rating === 1).length,
@@ -2658,6 +2685,15 @@ export const getRatingsAnalytics = async (req, res) => {
         totalRatings,
         averageRating: Math.round(averageRating * 10) / 10,
         distribution,
+        // v2.3.8: LACUNA #5 - AI vs OPERATOR stats
+        aiStats: {
+          totalRatings: aiStats.totalRatings,
+          averageRating: Math.round(aiStats.averageRating * 10) / 10,
+        },
+        operatorOnlyStats: {
+          totalRatings: operatorOnlyStats.totalRatings,
+          averageRating: Math.round(operatorOnlyStats.averageRating * 10) / 10,
+        },
         operatorStats: Object.values(operatorStats),
         ratings: ratings.slice(0, 50), // Last 50 ratings
       },
