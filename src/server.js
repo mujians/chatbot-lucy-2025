@@ -150,6 +150,7 @@ import analyticsRoutes from './routes/analytics.routes.js';
 import cannedResponseRoutes from './routes/canned-response.routes.js';
 import whatsappRoutes from './routes/whatsapp.routes.js';
 import healthRoutes from './routes/health.routes.js';
+import widgetConfigRoutes from './routes/widgetConfig.routes.js';
 import { setupWebSocketHandlers } from './services/websocket.service.js';
 
 // Use routes
@@ -163,6 +164,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/canned-responses', cannedResponseRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api', widgetConfigRoutes); // Widget config routes (both /config and /settings)
 
 // Setup WebSocket handlers
 setupWebSocketHandlers(io);
