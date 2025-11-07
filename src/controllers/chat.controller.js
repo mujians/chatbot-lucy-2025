@@ -1534,7 +1534,9 @@ export const setUserName = async (req, res) => {
       data: {
         sessionId,
         content: confirmationMessage.content,
-        type: 'operator',
+        type: 'OPERATOR',
+        operatorId: updatedSession.operatorId,
+        operatorName: updatedSession.operator?.name,
         createdAt: new Date(),
       },
     });
