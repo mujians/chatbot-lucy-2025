@@ -407,9 +407,12 @@ export const getActiveSessions = async (req, res) => {
       };
     });
 
+    // v2.3.10: Filter out AI chats with no messages
+    const filteredSessions = sessionsWithLastMessage.filter(session => session.messageCount > 0);
+
     res.json({
       success: true,
-      data: sessionsWithLastMessage,
+      data: filteredSessions,
     });
   } catch (error) {
     console.error('Get active sessions error:', error);
