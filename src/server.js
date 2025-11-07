@@ -158,11 +158,11 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/tickets', ticketRoutes);
 app.use('/api/knowledge', knowledgeRoutes);
 app.use('/api/operators', operatorRoutes);
+app.use('/api', widgetConfigRoutes); // Widget config routes (both /config and /settings) - MUST be before settingsRoutes to avoid /settings/:key catch-all
 app.use('/api/settings', settingsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/canned-responses', cannedResponseRoutes);
 app.use('/api/whatsapp', whatsappRoutes);
-app.use('/api', widgetConfigRoutes); // Widget config routes (both /config and /settings)
 
 // Setup WebSocket handlers
 setupWebSocketHandlers(io);
