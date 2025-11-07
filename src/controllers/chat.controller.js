@@ -1878,15 +1878,14 @@ export const getSessions = async (req, res) => {
         timestamp: msg.createdAt.toISOString(),
         ...(msg.operatorId && { operatorId: msg.operatorId, operatorName: msg.operatorName }),
         ...(msg.aiConfidence !== null && { confidence: msg.aiConfidence, suggestOperator: msg.aiSuggestOperator }),
+        // Flat attachment fields for consistency with WebSocket events
         ...(msg.attachmentUrl && {
-          attachment: {
-            url: msg.attachmentUrl,
-            publicId: msg.attachmentPublicId,
-            originalName: msg.attachmentName,
-            mimetype: msg.attachmentMimetype,
-            resourceType: msg.attachmentResourceType,
-            size: msg.attachmentSize,
-          },
+          attachmentUrl: msg.attachmentUrl,
+          attachmentPublicId: msg.attachmentPublicId,
+          attachmentName: msg.attachmentName,
+          attachmentMimetype: msg.attachmentMimetype,
+          attachmentResourceType: msg.attachmentResourceType,
+          attachmentSize: msg.attachmentSize,
         }),
       }));
 
