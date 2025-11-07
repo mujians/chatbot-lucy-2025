@@ -1425,10 +1425,36 @@ export const setUserName = async (req, res) => {
 
     console.log(`✅ v2.3.5: User name set to "${formattedName}" for session ${sessionId}`);
 
+    // v2.3.9: Create confirmation message visible to both user and operator
+    const confirmationMessage = {
+      sessionId,
+      content: `✅ Perfetto, ${formattedName}! Come posso aiutarti?`,
+      type: 'operator',
+      timestamp: new Date().toISOString(),
+    };
+
+    // Save message to database
+    const savedMessage = await prisma.message.create({
+      data: {
+        sessionId,
+        content: confirmationMessage.content,
+        type: 'operator',
+        createdAt: new Date(),
+      },
+    });
+
     // Notify dashboard via WebSocket
     io.to(`operator_${updatedSession.operatorId}`).emit('user_name_captured', {
       sessionId: sessionId,
       userName: formattedName,
+      message: savedMessage, // v2.3.9: Include message for operator dashboard
+    });
+
+    // Send message to user via WebSocket
+    io.to(sessionId).emit('operator_message', {
+      sessionId,
+      message: savedMessage,
+      operatorName: updatedSession.operator?.name || 'Operatore',
     });
 
     res.json({
