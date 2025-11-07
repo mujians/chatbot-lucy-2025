@@ -14,6 +14,7 @@ import {
   returnToAI,
   endConversation,
   reopenSession,
+  reactivateAISession,
   getSessions,
   deleteSession,
   archiveSession,
@@ -46,6 +47,7 @@ router.post('/session/:sessionId/end-conversation', endConversation); // v2.3.7:
 router.post('/session/:sessionId/request-operator', requestOperator);
 router.post('/session/:sessionId/cancel-operator-request', cancelOperatorRequest);
 router.post('/session/:sessionId/reopen', reopenSession);
+router.post('/sessions/:sessionId/reactivate', reactivateAISession); // v2.3.11: Reactivate AI chat closed for inactivity
 
 // Protected routes (for operators) - v2.2 CSRF protected
 router.get('/sessions', authenticateToken, getSessions);

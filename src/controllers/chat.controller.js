@@ -3,7 +3,7 @@ import { io } from '../server.js';
 import { generateAIResponse } from '../services/openai.service.js';
 import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
-import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout, startUserInactivityCheck, cancelUserInactivityCheck } from '../services/websocket.service.js';
+import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout, startUserInactivityCheck, cancelUserInactivityCheck, startAIInactivityCheck, cancelAIInactivityCheck } from '../services/websocket.service.js';
 
 // Rate limiting: Track message timestamps per session
 // Map<sessionId, timestamp[]>
@@ -355,6 +355,9 @@ export const createSession = async (req, res) => {
       createdAt: session.createdAt,
     });
 
+    // v2.3.11: Start AI inactivity timer (15 minutes)
+    startAIInactivityCheck(session.id, io);
+
     res.json({
       success: true,
       data: session,
@@ -668,6 +671,10 @@ export const sendUserMessage = async (req, res) => {
       messageCount: result.messages.length,
     });
 
+    // v2.3.11: Reset AI inactivity timer (user is active)
+    cancelAIInactivityCheck(sessionId);
+    startAIInactivityCheck(sessionId, io);
+
     res.json({
       success: true,
       data: {
@@ -941,6 +948,9 @@ export const operatorIntervene = async (req, res) => {
     });
 
     console.log(`✅ Operator ${operator.name} intervened in AI chat ${sessionId}`);
+
+    // v2.3.11: Cancel AI inactivity timer (now WITH_OPERATOR)
+    cancelAIInactivityCheck(sessionId);
 
     // Start operator response timeout
     startOperatorResponseTimeout(sessionId, io);
@@ -1297,6 +1307,89 @@ export const reopenSession = async (req, res) => {
 };
 
 /**
+ * v2.3.11: Reactivate AI chat closed for inactivity
+ * POST /api/chat/sessions/:sessionId/reactivate
+ */
+export const reactivateAISession = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get session
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      select: {
+        id: true,
+        status: true,
+        closureReason: true,
+        updatedAt: true,
+        userName: true,
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    // Verify session is CLOSED for AI_INACTIVITY_TIMEOUT
+    if (session.status !== 'CLOSED' || session.closureReason !== 'AI_INACTIVITY_TIMEOUT') {
+      return res.status(400).json({
+        error: { message: 'Can only reactivate AI chats closed for inactivity' },
+      });
+    }
+
+    // Check if closed less than 1 hour ago
+    const closedTime = Date.now() - new Date(session.updatedAt).getTime();
+    const MAX_REACTIVATE_TIME = 60 * 60 * 1000; // 1 hour
+
+    if (closedTime > MAX_REACTIVATE_TIME) {
+      return res.status(410).json({
+        error: {
+          message: 'Chat chiusa da troppo tempo. Inizia una nuova conversazione.',
+          code: 'REACTIVATE_WINDOW_EXPIRED',
+        },
+      });
+    }
+
+    // Reactivate: change status CLOSED → ACTIVE
+    await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: {
+        status: 'ACTIVE',
+        closureReason: null,
+      },
+    });
+
+    console.log(`🔄 AI chat ${sessionId} reactivated by user`);
+
+    // Restart AI inactivity timer
+    startAIInactivityCheck(sessionId, io);
+
+    // Notify user
+    io.to(`chat_${sessionId}`).emit('ai_chat_reactivated', {
+      sessionId: sessionId,
+      message: '✅ Chat riattivata! Continua pure la conversazione.',
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: sessionId,
+        status: 'ACTIVE',
+        message: 'Chat riattivata con successo',
+      },
+    });
+  } catch (error) {
+    console.error('Reactivate AI session error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
  * Close chat session
  * POST /api/chat/session/:sessionId/close
  */
@@ -1597,6 +1690,9 @@ export const endConversation = async (req, res) => {
     });
 
     console.log(`✅ User ended conversation for session ${sessionId}`);
+
+    // v2.3.11: Cancel AI inactivity timer if applicable
+    cancelAIInactivityCheck(sessionId);
 
     // If was with operator, notify them
     if (wasWithOperator && operatorId) {

@@ -34,6 +34,11 @@ const userInactivityWarningTimeouts = new Map();
 // Auto-close if user doesn't respond to presence check
 const userInactivityFinalTimeouts = new Map();
 
+// v2.3.11: AI chat inactivity timeout (15 minutes)
+// Maps sessionId -> timeout ID
+// Auto-close AI-only chats after 15 min of inactivity
+const aiInactivityTimeouts = new Map();
+
 export function setupWebSocketHandlers(io) {
   io.on('connection', (socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
@@ -654,5 +659,84 @@ export function cancelUserInactivityCheck(sessionId) {
     clearTimeout(userInactivityFinalTimeouts.get(sessionId));
     userInactivityFinalTimeouts.delete(sessionId);
     console.log(`✅ User inactivity final timeout cancelled for session ${sessionId} - user responded`);
+  }
+}
+
+/**
+ * v2.3.11: Start AI chat inactivity check
+ * Auto-close AI chats after 15 minutes of inactivity
+ */
+export function startAIInactivityCheck(sessionId, io) {
+  // Cancel existing timer first
+  cancelAIInactivityCheck(sessionId);
+
+  const AI_TIMEOUT = 15 * 60 * 1000; // 15 minutes
+
+  console.log(`⏱️  Starting AI inactivity check for session ${sessionId} (15 minutes)`);
+
+  const timeoutId = setTimeout(async () => {
+    console.log(`⚠️  AI chat ${sessionId} inactive for 15 minutes - auto closing`);
+
+    try {
+      // Check if session is still ACTIVE
+      const session = await prisma.chatSession.findUnique({
+        where: { id: sessionId },
+        select: {
+          id: true,
+          status: true,
+          userName: true,
+        },
+      });
+
+      if (!session || session.status !== 'ACTIVE') {
+        console.log(`ℹ️  Session ${sessionId} no longer active, skipping auto-close`);
+        aiInactivityTimeouts.delete(sessionId);
+        return;
+      }
+
+      // Auto-close AI chat
+      await prisma.chatSession.update({
+        where: { id: sessionId },
+        data: {
+          status: 'CLOSED',
+          closureReason: 'AI_INACTIVITY_TIMEOUT',
+        },
+      });
+
+      console.log(`✅ Auto-closed AI chat ${sessionId} due to inactivity (15 minutes)`);
+
+      // Notify USER: Chat closed for inactivity with reactivation option
+      io.to(`chat_${sessionId}`).emit('ai_chat_closed_inactivity', {
+        sessionId: sessionId,
+        reason: 'inactivity',
+        message: 'Chat chiusa per inattività. Puoi riaprirla o iniziarne una nuova!',
+        timestamp: new Date().toISOString(),
+      });
+
+      // Update dashboard - remove from active AI chats list
+      io.to('dashboard').emit('chat_closed', {
+        sessionId: sessionId,
+      });
+
+      // Clean up timeout tracking
+      aiInactivityTimeouts.delete(sessionId);
+    } catch (error) {
+      console.error(`❌ Error auto-closing AI session ${sessionId} due to inactivity:`, error);
+    }
+  }, AI_TIMEOUT);
+
+  // Store timeout ID
+  aiInactivityTimeouts.set(sessionId, timeoutId);
+}
+
+/**
+ * v2.3.11: Cancel AI chat inactivity check
+ * Called when user sends a message or chat is closed manually
+ */
+export function cancelAIInactivityCheck(sessionId) {
+  if (aiInactivityTimeouts.has(sessionId)) {
+    clearTimeout(aiInactivityTimeouts.get(sessionId));
+    aiInactivityTimeouts.delete(sessionId);
+    console.log(`✅ AI inactivity timer cancelled for session ${sessionId} - user is active`);
   }
 }
