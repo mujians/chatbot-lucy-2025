@@ -1555,6 +1555,13 @@ export const setUserName = async (req, res) => {
       operatorName: updatedSession.operator?.name || 'Operatore',
     });
 
+    // Also send to operator dashboard so message appears in their chat view
+    io.to(`operator_${updatedSession.operatorId}`).emit('operator_message', {
+      sessionId,
+      message: savedMessage,
+      operatorName: updatedSession.operator?.name || 'Operatore',
+    });
+
     res.json({
       success: true,
       data: { session: updatedSession, userName: formattedName },
