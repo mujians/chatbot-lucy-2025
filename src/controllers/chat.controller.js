@@ -5,6 +5,7 @@ import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
 import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout, startUserInactivityCheck, cancelUserInactivityCheck, startAIInactivityCheck, cancelAIInactivityCheck } from '../services/websocket.service.js';
 import { loggingService } from '../services/logging.service.js';
+import { narrativeLogger } from '../services/narrative-logging.service.js';
 
 // Rate limiting: Track message timestamps per session
 // Map<sessionId, timestamp[]>
@@ -349,6 +350,9 @@ export const createSession = async (req, res) => {
       createdAt: session.createdAt,
     });
 
+    // Narrative log
+    narrativeLogger.logChatCreated(session.id, session.userName, session.userEmail);
+
     // Notify dashboard of new chat (AI chat)
     io.to('dashboard').emit('new_chat_created', {
       sessionId: session.id,
@@ -583,6 +587,14 @@ export const sendUserMessage = async (req, res) => {
       loggingService.logUserMessageSent(sessionId, result.message.id, message);
       loggingService.logMessageSaved(result.message.id, sessionId, 'USER', false);
 
+      // Narrative log
+      narrativeLogger.logUserMessageToOperator(
+        sessionId,
+        fullSession.userName,
+        message,
+        fullSession.operator?.name || 'Operatore'
+      );
+
       // Convert to legacy format for Socket.IO
       const userMessage = {
         id: result.message.id,
@@ -673,6 +685,16 @@ export const sendUserMessage = async (req, res) => {
     loggingService.logMessageSaved(result.messages[0].id, sessionId, 'USER', false);
     loggingService.logAIResponseGenerated(sessionId, result.messages[1].id, null, null);
     loggingService.logMessageSaved(result.messages[1].id, sessionId, 'AI', false);
+
+    // Narrative log
+    narrativeLogger.logUserMessageToAI(
+      sessionId,
+      fullSession.userName,
+      message,
+      aiResult.message,
+      aiResult.confidence || 0,
+      aiResult.suggestOperator || false
+    );
 
     // Convert to legacy format for response
     const userMessage = {
@@ -836,6 +858,9 @@ export const requestOperator = async (req, res) => {
     // Log operator request
     loggingService.logUserOperatorRequested(sessionId, session.userId);
     loggingService.logSessionStatusChanged(sessionId, session.status, 'WAITING', 'User requested operator');
+
+    // Narrative log
+    narrativeLogger.logOperatorRequested(sessionId, session.userName, availableOperators.length);
 
     // BUG #6: Get last user message from Message table for notification
     const lastUserMessage = await prisma.message.findFirst({
@@ -1109,6 +1134,9 @@ export const acceptOperator = async (req, res) => {
     loggingService.logSessionStatusChanged(sessionId, 'WAITING', 'WITH_OPERATOR', 'Operator accepted chat');
     loggingService.logMessageSaved(systemMessage.id, sessionId, 'SYSTEM', false);
 
+    // Narrative log
+    narrativeLogger.logOperatorAccepted(sessionId, session.userName, operatorId, operator.name);
+
     // IMPORTANT: Notify widget FIRST that operator joined (changes widget state)
     io.to(`chat_${sessionId}`).emit('operator_joined', {
       sessionId: sessionId,
@@ -1218,6 +1246,14 @@ export const sendOperatorMessage = async (req, res) => {
       message
     );
     loggingService.logMessageSaved(result.message.id, sessionId, 'OPERATOR', false);
+
+    // Narrative log
+    narrativeLogger.logOperatorMessage(
+      sessionId,
+      session.userName,
+      session.operator?.name || 'Operatore',
+      message
+    );
 
     // Convert to legacy format for Socket.IO
     const operatorMessage = {
@@ -1480,6 +1516,9 @@ export const closeSession = async (req, res) => {
     loggingService.logSessionStatusChanged(sessionId, session.status, 'CLOSED', 'Operator closed chat');
     loggingService.logMessageSaved(result.message.id, sessionId, 'SYSTEM', false);
 
+    // Narrative log
+    narrativeLogger.logChatClosedByOperator(sessionId, session.userName, 'Operator');
+
     // Convert to legacy format for Socket.IO events
     const closingMessage = {
       id: result.message.id,
@@ -1603,6 +1642,14 @@ export const setUserName = async (req, res) => {
     loggingService.logMessageSaved(savedMessage.id, sessionId, 'OPERATOR', false);
     loggingService.logUserNameCaptured(sessionId, formattedName);
 
+    // Narrative log
+    narrativeLogger.logUserNameProvided(
+      sessionId,
+      formattedName,
+      updatedSession.operator?.name || 'Operatore',
+      true // via form
+    );
+
     // Notify dashboard via WebSocket
     io.to(`operator_${updatedSession.operatorId}`).emit('user_name_captured', {
       sessionId: sessionId,
@@ -1684,6 +1731,9 @@ export const skipUserName = async (req, res) => {
     // Log user skipped name
     loggingService.logUserNameSkipped(sessionId);
     loggingService.logMessageSaved(greetingMessage.id, sessionId, 'OPERATOR', false);
+
+    // Narrative log
+    narrativeLogger.logUserNameSkipped(sessionId, session.operator?.name || 'Operatore');
 
     // Send message to user via WebSocket
     io.to(sessionId).emit('operator_message', {
@@ -1771,6 +1821,9 @@ export const returnToAI = async (req, res) => {
     loggingService.logSessionStatusChanged(sessionId, 'WITH_OPERATOR', 'ACTIVE', 'User returned to AI');
     loggingService.logMessageSaved(systemMessage.id, sessionId, 'SYSTEM', false);
 
+    // Narrative log
+    narrativeLogger.logUserReturnToAI(sessionId, session.userName, operatorName);
+
     console.log(`✅ ISSUE #10: User returned to AI from operator ${operatorName} in session ${sessionId}`);
 
     // Notify operator that user left
@@ -1845,6 +1898,9 @@ export const endConversation = async (req, res) => {
     // Log user ended conversation
     loggingService.logUserEndConversation(sessionId);
     loggingService.logSessionStatusChanged(sessionId, session.status, 'CLOSED', 'User ended conversation');
+
+    // Narrative log
+    narrativeLogger.logConversationEnded(sessionId, session.userName, wasWithOperator, session.operator?.name);
 
     console.log(`✅ User ended conversation for session ${sessionId}`);
 
@@ -2754,6 +2810,16 @@ export const uploadFile = async (req, res) => {
       resourceType: uploadResult.resourceType,
     });
     loggingService.logMessageSaved(result.message.id, sessionId, isOperator ? 'OPERATOR' : 'USER', true);
+
+    // Narrative log
+    narrativeLogger.logFileUploaded(
+      sessionId,
+      session.userName,
+      uploadResult.originalName,
+      uploadResult.bytes,
+      uploadResult.mimetype,
+      isOperator
+    );
 
     // Convert to legacy format for Socket.IO events
     const newMessage = {
