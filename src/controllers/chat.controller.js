@@ -1576,6 +1576,73 @@ export const setUserName = async (req, res) => {
 };
 
 /**
+ * v2.3.12: Skip user name collection
+ * POST /api/chat/session/:sessionId/skip-name
+ */
+export const skipUserName = async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+
+    // Get session with operator details
+    const session = await prisma.chatSession.findUnique({
+      where: { id: sessionId },
+      include: { operator: true },
+    });
+
+    if (!session) {
+      return res.status(404).json({
+        error: { message: 'Session not found' },
+      });
+    }
+
+    if (!session.operatorId) {
+      return res.status(400).json({
+        error: { message: 'No operator assigned to this session' },
+      });
+    }
+
+    // Create operator greeting message
+    const greetingMessage = await prisma.message.create({
+      data: {
+        sessionId,
+        content: 'Nessun problema! Come posso aiutarti?',
+        type: 'OPERATOR',
+        operatorId: session.operatorId,
+        operatorName: session.operator?.name,
+        createdAt: new Date(),
+      },
+    });
+
+    // Send message to user via WebSocket
+    io.to(sessionId).emit('operator_message', {
+      sessionId,
+      message: greetingMessage,
+      operatorName: session.operator?.name || 'Operatore',
+    });
+
+    // Send to operator dashboard
+    io.to(`operator_${session.operatorId}`).emit('operator_message', {
+      sessionId,
+      message: greetingMessage,
+      operatorName: session.operator?.name || 'Operatore',
+    });
+
+    console.log(`✅ User skipped name entry for session ${sessionId}`);
+
+    res.json({
+      success: true,
+      data: { session },
+      message: 'Name entry skipped successfully',
+    });
+  } catch (error) {
+    console.error('Skip user name error:', error);
+    res.status(500).json({
+      error: { message: 'Internal server error' },
+    });
+  }
+};
+
+/**
  * v2.3.5: ISSUE #10 - User returns to AI from operator chat
  * POST /api/chat/session/:sessionId/return-to-ai
  */
