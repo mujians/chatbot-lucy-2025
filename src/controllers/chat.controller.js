@@ -4,6 +4,7 @@ import { generateAIResponse } from '../services/openai.service.js';
 import { emailService } from '../services/email.service.js';
 import { uploadService } from '../services/upload.service.js';
 import { startOperatorResponseTimeout, cancelOperatorResponseTimeout, startWaitingTimeout, cancelWaitingTimeout, startUserInactivityCheck, cancelUserInactivityCheck, startAIInactivityCheck, cancelAIInactivityCheck } from '../services/websocket.service.js';
+import { loggingService } from '../services/logging.service.js';
 
 // Rate limiting: Track message timestamps per session
 // Map<sessionId, timestamp[]>
@@ -340,12 +341,25 @@ export const createSession = async (req, res) => {
       },
     });
 
+    // Log session creation
+    loggingService.logSessionCreated(session.id, userId, {
+      status: session.status,
+      userName: session.userName,
+      userEmail: session.userEmail,
+      createdAt: session.createdAt,
+    });
+
     // Notify dashboard of new chat (AI chat)
     io.to('dashboard').emit('new_chat_created', {
       sessionId: session.id,
       userName: session.userName,
       status: session.status,
       createdAt: session.createdAt,
+    });
+
+    // Log WebSocket emission
+    loggingService.logWebSocketEmission('new_chat_created', 'dashboard', {
+      sessionId: session.id,
     });
 
     // Also emit specific AI chat event for monitoring
@@ -565,6 +579,10 @@ export const sendUserMessage = async (req, res) => {
         unreadMessageCount: { increment: 1 },
       });
 
+      // Log user message sent to operator
+      loggingService.logUserMessageSent(sessionId, result.message.id, message);
+      loggingService.logMessageSaved(result.message.id, sessionId, 'USER', false);
+
       // Convert to legacy format for Socket.IO
       const userMessage = {
         id: result.message.id,
@@ -579,6 +597,12 @@ export const sendUserMessage = async (req, res) => {
         userName: fullSession.userName,
         message: userMessage,
         unreadCount: fullSession.unreadMessageCount + 1,
+      });
+
+      // Log WebSocket emission
+      loggingService.logWebSocketEmission('user_message', `operator_${fullSession.operatorId}`, {
+        sessionId,
+        messageId: userMessage.id,
       });
 
       // Also emit to chat room (for dashboard ChatWindow)
@@ -643,6 +667,12 @@ export const sendUserMessage = async (req, res) => {
         aiSuggestOperator: aiResult.suggestOperator,
       },
     ]);
+
+    // Log user message and AI response
+    loggingService.logUserMessageSent(sessionId, result.messages[0].id, message);
+    loggingService.logMessageSaved(result.messages[0].id, sessionId, 'USER', false);
+    loggingService.logAIResponseGenerated(sessionId, result.messages[1].id, null, null);
+    loggingService.logMessageSaved(result.messages[1].id, sessionId, 'AI', false);
 
     // Convert to legacy format for response
     const userMessage = {
@@ -802,6 +832,10 @@ export const requestOperator = async (req, res) => {
         lastMessageAt: new Date(),
       },
     });
+
+    // Log operator request
+    loggingService.logUserOperatorRequested(sessionId, session.userId);
+    loggingService.logSessionStatusChanged(sessionId, session.status, 'WAITING', 'User requested operator');
 
     // BUG #6: Get last user message from Message table for notification
     const lastUserMessage = await prisma.message.findFirst({
@@ -1070,6 +1104,11 @@ export const acceptOperator = async (req, res) => {
       },
     });
 
+    // Log operator accepted chat
+    loggingService.logOperatorAcceptedChat(sessionId, operatorId, operator.name);
+    loggingService.logSessionStatusChanged(sessionId, 'WAITING', 'WITH_OPERATOR', 'Operator accepted chat');
+    loggingService.logMessageSaved(systemMessage.id, sessionId, 'SYSTEM', false);
+
     // IMPORTANT: Notify widget FIRST that operator joined (changes widget state)
     io.to(`chat_${sessionId}`).emit('operator_joined', {
       sessionId: sessionId,
@@ -1169,6 +1208,16 @@ export const sendOperatorMessage = async (req, res) => {
       operatorId: operatorId || session.operatorId,
       operatorName: session.operator?.name || 'Operatore',
     });
+
+    // Log operator message sent
+    loggingService.logOperatorMessageSent(
+      sessionId,
+      operatorId || session.operatorId,
+      session.operator?.name || 'Operatore',
+      result.message.id,
+      message
+    );
+    loggingService.logMessageSaved(result.message.id, sessionId, 'OPERATOR', false);
 
     // Convert to legacy format for Socket.IO
     const operatorMessage = {
@@ -1426,6 +1475,11 @@ export const closeSession = async (req, res) => {
 
     const updatedSession = result.session;
 
+    // Log chat closed
+    loggingService.logOperatorClosedChat(sessionId, session.operatorId, 'Operator');
+    loggingService.logSessionStatusChanged(sessionId, session.status, 'CLOSED', 'Operator closed chat');
+    loggingService.logMessageSaved(result.message.id, sessionId, 'SYSTEM', false);
+
     // Convert to legacy format for Socket.IO events
     const closingMessage = {
       id: result.message.id,
@@ -1519,6 +1573,10 @@ export const setUserName = async (req, res) => {
       data: { userName: formattedName },
     });
 
+    // Log user name set
+    loggingService.logUserNameSet(sessionId, formattedName);
+    loggingService.logSessionUpdated(sessionId, { userName: formattedName });
+
     console.log(`✅ v2.3.5: User name set to "${formattedName}" for session ${sessionId}`);
 
     // v2.3.9: Create confirmation message visible to both user and operator
@@ -1541,11 +1599,21 @@ export const setUserName = async (req, res) => {
       },
     });
 
+    // Log message saved and name capture
+    loggingService.logMessageSaved(savedMessage.id, sessionId, 'OPERATOR', false);
+    loggingService.logUserNameCaptured(sessionId, formattedName);
+
     // Notify dashboard via WebSocket
     io.to(`operator_${updatedSession.operatorId}`).emit('user_name_captured', {
       sessionId: sessionId,
       userName: formattedName,
       message: savedMessage, // v2.3.9: Include message for operator dashboard
+    });
+
+    // Log WebSocket emission
+    loggingService.logWebSocketEmission('user_name_captured', `operator_${updatedSession.operatorId}`, {
+      sessionId,
+      userName: formattedName,
     });
 
     // Send message to user via WebSocket
@@ -1612,6 +1680,10 @@ export const skipUserName = async (req, res) => {
         createdAt: new Date(),
       },
     });
+
+    // Log user skipped name
+    loggingService.logUserNameSkipped(sessionId);
+    loggingService.logMessageSaved(greetingMessage.id, sessionId, 'OPERATOR', false);
 
     // Send message to user via WebSocket
     io.to(sessionId).emit('operator_message', {
@@ -1694,6 +1766,11 @@ export const returnToAI = async (req, res) => {
       }
     );
 
+    // Log user returned to AI
+    loggingService.logUserReturnToAI(sessionId);
+    loggingService.logSessionStatusChanged(sessionId, 'WITH_OPERATOR', 'ACTIVE', 'User returned to AI');
+    loggingService.logMessageSaved(systemMessage.id, sessionId, 'SYSTEM', false);
+
     console.log(`✅ ISSUE #10: User returned to AI from operator ${operatorName} in session ${sessionId}`);
 
     // Notify operator that user left
@@ -1764,6 +1841,10 @@ export const endConversation = async (req, res) => {
         closedAt: new Date(),
       },
     });
+
+    // Log user ended conversation
+    loggingService.logUserEndConversation(sessionId);
+    loggingService.logSessionStatusChanged(sessionId, session.status, 'CLOSED', 'User ended conversation');
 
     console.log(`✅ User ended conversation for session ${sessionId}`);
 
@@ -2664,6 +2745,15 @@ export const uploadFile = async (req, res) => {
         operatorId: req.operator.id
       }),
     });
+
+    // Log file upload
+    loggingService.logUserFileUpload(sessionId, {
+      fileName: uploadResult.originalName,
+      fileSize: uploadResult.bytes,
+      mimeType: uploadResult.mimetype,
+      resourceType: uploadResult.resourceType,
+    });
+    loggingService.logMessageSaved(result.message.id, sessionId, isOperator ? 'OPERATOR' : 'USER', true);
 
     // Convert to legacy format for Socket.IO events
     const newMessage = {
