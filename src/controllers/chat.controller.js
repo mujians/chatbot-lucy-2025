@@ -1150,8 +1150,48 @@ export const acceptOperator = async (req, res) => {
       },
     });
 
-    // v2.3.5: Removed automatic greeting message - now using form-based name collection
-    // The widget will show a form asking for the user's name
+    // v2.3.13: Add back automatic greeting message (Bug fix)
+    // Send welcome message from operator immediately after joining
+    const greetingMessage = await prisma.message.create({
+      data: {
+        sessionId,
+        content: `Ciao! Sono ${operator.name}, come posso aiutarti?`,
+        type: 'OPERATOR',
+        operatorId: operator.id,
+        operatorName: operator.name,
+        createdAt: new Date(),
+      },
+    });
+
+    // Send greeting to user via WebSocket
+    io.to(sessionId).emit('operator_message', {
+      sessionId,
+      message: {
+        id: greetingMessage.id,
+        type: 'operator',
+        content: greetingMessage.content,
+        timestamp: greetingMessage.createdAt.toISOString(),
+        operatorId: greetingMessage.operatorId,
+        operatorName: greetingMessage.operatorName,
+      },
+      operatorName: operator.name,
+    });
+
+    // Also send to operator dashboard
+    io.to(`operator_${operator.id}`).emit('operator_message', {
+      sessionId,
+      message: {
+        id: greetingMessage.id,
+        type: 'operator',
+        content: greetingMessage.content,
+        timestamp: greetingMessage.createdAt.toISOString(),
+        operatorId: greetingMessage.operatorId,
+        operatorName: greetingMessage.operatorName,
+      },
+      operatorName: operator.name,
+    });
+
+    console.log(`👋 Automatic greeting sent: "${greetingMessage.content}"`);
 
     // Notify dashboard: chat accepted
     io.to('dashboard').emit('chat_accepted', {
